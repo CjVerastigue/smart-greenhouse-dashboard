@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Smart Greenhouse Dashboard</title>
     
     <!-- Chart.js for data visualization -->
@@ -1007,6 +1007,11 @@
     <nav class="navbar">
         <div class="nav-container">
             <div class="nav-brand">🌱 Smart Farm Management</div>
+            <button class="mobile-menu-toggle" onclick="toggleMobileMenu()" aria-label="Toggle mobile menu">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
             <ul class="nav-menu">
                 <li class="nav-item">
                     <a href="#" class="nav-link active" data-page="homepage">
@@ -3491,6 +3496,154 @@
             </div>
         </div>
     </div>
+
+    <!-- Mobile Menu JavaScript -->
+    <script>
+        // Mobile menu functionality
+        function toggleMobileMenu() {
+            const navMenu = document.querySelector('.nav-menu');
+            const menuToggle = document.querySelector('.mobile-menu-toggle');
+            
+            navMenu.classList.toggle('active');
+            menuToggle.classList.toggle('active');
+        }
+
+        // Close mobile menu when clicking on a link
+        document.addEventListener('DOMContentLoaded', function() {
+            const navLinks = document.querySelectorAll('.nav-link');
+            const navMenu = document.querySelector('.nav-menu');
+            const menuToggle = document.querySelector('.mobile-menu-toggle');
+            
+            navLinks.forEach(link => {
+                link.addEventListener('click', () => {
+                    navMenu.classList.remove('active');
+                    menuToggle.classList.remove('active');
+                });
+            });
+            
+            // Close menu when clicking outside
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.nav-container')) {
+                    navMenu.classList.remove('active');
+                    menuToggle.classList.remove('active');
+                }
+            });
+        });
+
+        // Handle orientation change
+        window.addEventListener('orientationchange', function() {
+            setTimeout(() => {
+                const navMenu = document.querySelector('.nav-menu');
+                const menuToggle = document.querySelector('.mobile-menu-toggle');
+                navMenu.classList.remove('active');
+                menuToggle.classList.remove('active');
+            }, 100);
+        });
+
+        // Prevent zoom on input focus (iOS)
+        document.addEventListener('DOMContentLoaded', function() {
+            const inputs = document.querySelectorAll('input, select, textarea');
+            inputs.forEach(input => {
+                input.addEventListener('focus', function() {
+                    if (window.innerWidth <= 768) {
+                        const viewport = document.querySelector('meta[name="viewport"]');
+                        viewport.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
+                    }
+                });
+                
+                input.addEventListener('blur', function() {
+                    const viewport = document.querySelector('meta[name="viewport"]');
+                    viewport.setAttribute('content', 'width=device-width, initial-scale=1.0');
+                });
+            });
+        });
+
+        // Responsive utilities
+        function isMobile() {
+            return window.innerWidth <= 768;
+        }
+
+        function isTablet() {
+            return window.innerWidth > 768 && window.innerWidth <= 1024;
+        }
+
+        function isDesktop() {
+            return window.innerWidth > 1024;
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', function() {
+            const navMenu = document.querySelector('.nav-menu');
+            const menuToggle = document.querySelector('.mobile-menu-toggle');
+            
+            // Close mobile menu on resize to desktop
+            if (window.innerWidth > 768) {
+                navMenu.classList.remove('active');
+                menuToggle.classList.remove('active');
+            }
+        });
+
+        // Touch gesture support
+        let touchStartX = 0;
+        let touchStartY = 0;
+
+        document.addEventListener('touchstart', function(e) {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+        });
+
+        document.addEventListener('touchend', function(e) {
+            const touchEndX = e.changedTouches[0].clientX;
+            const touchEndY = e.changedTouches[0].clientY;
+            const deltaX = touchEndX - touchStartX;
+            const deltaY = touchEndY - touchStartY;
+
+            // Swipe right to open menu (only on mobile)
+            if (isMobile() && deltaX > 50 && Math.abs(deltaY) < 100) {
+                const navMenu = document.querySelector('.nav-menu');
+                const menuToggle = document.querySelector('.mobile-menu-toggle');
+                navMenu.classList.add('active');
+                menuToggle.classList.add('active');
+            }
+
+            // Swipe left to close menu
+            if (deltaX < -50 && Math.abs(deltaY) < 100) {
+                const navMenu = document.querySelector('.nav-menu');
+                const menuToggle = document.querySelector('.mobile-menu-toggle');
+                navMenu.classList.remove('active');
+                menuToggle.classList.remove('active');
+            }
+        });
+
+        // Add loading states for better UX
+        function showLoading(element) {
+            if (element) {
+                element.style.opacity = '0.6';
+                element.style.pointerEvents = 'none';
+            }
+        }
+
+        function hideLoading(element) {
+            if (element) {
+                element.style.opacity = '1';
+                element.style.pointerEvents = 'auto';
+            }
+        }
+
+        // Enhanced button interactions for mobile
+        document.addEventListener('DOMContentLoaded', function() {
+            const buttons = document.querySelectorAll('.btn');
+            buttons.forEach(button => {
+                button.addEventListener('touchstart', function() {
+                    this.style.transform = 'scale(0.95)';
+                });
+                
+                button.addEventListener('touchend', function() {
+                    this.style.transform = 'scale(1)';
+                });
+            });
+        });
+    </script>
 </body>
 </html>
 
