@@ -1,0 +1,3496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Greenhouse Dashboard</title>
+    
+    <!-- Chart.js for data visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    
+    <!-- MQTT.js for broker connection -->
+    <script src="https://unpkg.com/mqtt@5.3.0/dist/mqtt.min.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-color: #2ecc71;
+            --secondary-color: #27ae60;
+            --dark-bg: #1a1a2e;
+            --card-bg: #16213e;
+            --text-light: #ffffff;
+            --text-muted: #a0a0a0;
+            --warning: #f39c12;
+            --danger: #e74c3c;
+            --info: #3498db;
+            --success: #2ecc71;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%);
+            color: var(--text-light);
+            min-height: 100vh;
+            margin: 0;
+            padding: 0;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* Navigation Bar */
+        .navbar {
+            background: rgba(22, 33, 62, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 15px 0;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        .nav-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+        }
+
+        .nav-brand {
+            font-size: 1.5rem;
+            font-weight: bold;
+            background: linear-gradient(135deg, var(--primary-color), var(--info));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .nav-menu {
+            display: flex;
+            gap: 30px;
+            list-style: none;
+        }
+
+        .nav-item {
+            position: relative;
+        }
+
+        .nav-link {
+            color: var(--text-light);
+            text-decoration: none;
+            padding: 10px 15px;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
+        }
+
+        .nav-link:hover {
+            background: rgba(46, 204, 113, 0.1);
+            color: var(--primary-color);
+        }
+
+        .nav-link.active {
+            background: rgba(46, 204, 113, 0.2);
+            color: var(--primary-color);
+            border: 1px solid rgba(46, 204, 113, 0.3);
+        }
+
+        .nav-status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.8rem;
+        }
+
+        .status-indicator-nav {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--danger);
+            animation: pulse 2s infinite;
+        }
+
+        .status-indicator-nav.connected {
+            background: var(--success);
+        }
+
+        /* Page Content */
+        .page-content {
+            padding: 20px;
+            min-height: calc(100vh - 80px);
+        }
+
+        .page {
+            display: none;
+        }
+
+        .page.active {
+            display: block;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding: 20px;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, var(--primary-color), var(--info));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .connection-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            font-size: 0.9rem;
+            margin-top: 10px;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--danger);
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.connected {
+            background: var(--success);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            min-height: 200px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            position: relative;
+        }
+
+        .clickable-card {
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .clickable-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            border-color: var(--primary-color);
+        }
+
+        .clickable-card:active {
+            transform: translateY(-2px);
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 40px rgba(46, 204, 113, 0.2);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 15px;
+        }
+
+        .card-icon {
+            font-size: 2rem;
+        }
+
+        .card-title {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .card-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin: 10px 0;
+            background: linear-gradient(135deg, var(--primary-color), var(--info));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .card-unit {
+            font-size: 1rem;
+            color: var(--text-muted);
+        }
+
+        .card-timestamp {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 10px;
+        }
+
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            margin-top: 8px;
+        }
+
+        .status-good {
+            background: rgba(46, 204, 113, 0.2);
+            color: var(--success);
+            border: 1px solid rgba(46, 204, 113, 0.3);
+        }
+
+        .status-warning {
+            background: rgba(243, 156, 18, 0.2);
+            color: var(--warning);
+            border: 1px solid rgba(243, 156, 18, 0.3);
+        }
+
+        .status-danger {
+            background: rgba(231, 76, 60, 0.2);
+            color: var(--danger);
+            border: 1px solid rgba(231, 76, 60, 0.3);
+        }
+
+        .recommendation {
+            background: rgba(52, 152, 219, 0.1);
+            border: 1px solid rgba(52, 152, 219, 0.3);
+            border-radius: 8px;
+            padding: 10px;
+            margin-top: 10px;
+            font-size: 0.8rem;
+            color: var(--info);
+        }
+
+        .sensor-info {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-top: 5px;
+            line-height: 1.3;
+        }
+
+        .npk-status {
+            font-size: 0.6rem;
+            margin-top: 5px;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .summary-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 15px;
+            background: rgba(46, 204, 113, 0.05);
+            border-radius: 10px;
+            border: 1px solid rgba(46, 204, 113, 0.2);
+        }
+
+        .summary-status {
+            font-size: 0.8rem;
+            margin-top: 5px;
+            padding: 2px 8px;
+            border-radius: 12px;
+            text-align: center;
+            font-weight: 500;
+        }
+
+        .summary-status.good {
+            background: rgba(46, 204, 113, 0.2);
+            color: var(--success);
+        }
+
+        .summary-status.warning {
+            background: rgba(241, 196, 15, 0.2);
+            color: var(--warning);
+        }
+
+        .summary-status.critical {
+            background: rgba(231, 76, 60, 0.2);
+            color: var(--danger);
+        }
+
+        .summary-details {
+            margin-top: 30px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .summary-detail-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .summary-detail-item h4 {
+            color: var(--primary-color);
+            margin-bottom: 10px;
+            font-size: 1rem;
+        }
+
+        .summary-detail-item p {
+            margin: 5px 0;
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+
+        .summary-icon {
+            font-size: 1.5rem;
+        }
+
+        .summary-content {
+            flex: 1;
+        }
+
+        .summary-label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-bottom: 5px;
+        }
+
+        .summary-value {
+            font-size: 1rem;
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+
+        /* Additional Page Styles */
+        .page-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .page-title {
+            font-size: 2rem;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, var(--primary-color), var(--info));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .page-subtitle {
+            color: var(--text-muted);
+            font-size: 1rem;
+        }
+
+        /* History Page Styles */
+        .time-range-selector {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            justify-content: center;
+        }
+
+        .time-btn {
+            padding: 8px 16px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-light);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .time-btn.active {
+            background: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+
+        .history-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .export-btn {
+            background: linear-gradient(135deg, var(--info), var(--primary-color));
+            color: var(--text-light);
+            border: none;
+            padding: 12px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(52, 152, 219, 0.3);
+        }
+
+        .export-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(52, 152, 219, 0.4);
+        }
+
+        .export-btn:active {
+            transform: translateY(0);
+        }
+
+        .export-section {
+            background: var(--card-bg);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        /* Settings Page Styles */
+        .settings-section {
+            background: var(--card-bg);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .settings-section h3 {
+            margin-bottom: 20px;
+            color: var(--primary-color);
+            font-size: 1.2rem;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .form-group label {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-light);
+            font-size: 0.9rem;
+        }
+
+        .form-group textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: var(--text-light);
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: transform 0.2s ease;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-light);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .scroll-to-top {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, var(--primary-color), var(--success));
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            color: white;
+            box-shadow: 0 4px 15px rgba(46, 204, 113, 0.3);
+            transition: all 0.3s ease;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+        }
+
+        .scroll-to-top.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .scroll-to-top:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(46, 204, 113, 0.4);
+        }
+
+        .info-btn {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            width: 25px;
+            height: 25px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: var(--text-light);
+            transition: all 0.3s ease;
+            z-index: 10;
+        }
+
+        .info-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.3);
+            transform: scale(1.1);
+        }
+
+        .info-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .info-modal.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .info-modal-content {
+            background: var(--card-bg);
+            border-radius: 15px;
+            padding: 30px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            transform: scale(0.9);
+            transition: transform 0.3s ease;
+        }
+
+        .info-modal.visible .info-modal-content {
+            transform: scale(1);
+        }
+
+        .info-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .info-modal-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--text-light);
+            margin: 0;
+        }
+
+        .info-modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            color: var(--text-light);
+            cursor: pointer;
+            padding: 5px;
+            border-radius: 50%;
+            transition: all 0.3s ease;
+        }
+
+        .info-modal-close:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .info-modal-body {
+            color: var(--text-light);
+            line-height: 1.6;
+        }
+
+        .info-modal-body h4 {
+            color: var(--primary-color);
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+
+        .info-modal-body ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+
+        .info-modal-body li {
+            margin: 5px 0;
+        }
+
+        .charts-section {
+            margin-top: 30px;
+        }
+
+        .chart-container {
+            background: var(--card-bg);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .chart-title {
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+            color: var(--text-light);
+        }
+
+        canvas {
+            max-height: 300px;
+        }
+
+        .npk-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-top: 15px;
+            text-align: center;
+        }
+
+        .npk-item {
+            text-align: center;
+            padding: 15px;
+            background: rgba(46, 204, 113, 0.1);
+            border-radius: 10px;
+            border: 1px solid rgba(46, 204, 113, 0.3);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .npk-card {
+            text-align: center;
+        }
+
+        .npk-card .card-header {
+            justify-content: center;
+        }
+
+        .npk-card .card-timestamp {
+            text-align: center;
+        }
+
+        .npk-label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-bottom: 5px;
+        }
+
+        .npk-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+
+        .settings-panel {
+            background: var(--card-bg);
+            border-radius: 15px;
+            padding: 25px;
+            margin-top: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .settings-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .input-group label {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
+        .input-group input {
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-light);
+            font-size: 0.9rem;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border-radius: 8px;
+            border: none;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: var(--text-light);
+            font-size: 1rem;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            margin-top: 15px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(46, 204, 113, 0.4);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        /* Fan Control Button Styles */
+        .fan-control-button {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border: 2px solid #dee2e6;
+            border-radius: 15px;
+            padding: 20px;
+            width: 100%;
+            min-height: 200px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            font-family: inherit;
+            cursor: pointer;
+            user-select: none;
+            color: #495057;
+        }
+
+        .fan-control-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            border-color: #007bff;
+        }
+
+        .fan-control-button:active {
+            transform: translateY(-1px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .fan-control-button.active {
+            background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+            border-color: #28a745;
+            box-shadow: 0 0 20px rgba(40, 167, 69, 0.3);
+        }
+
+        .fan-control-button.active .fan-indicator {
+            background: #28a745;
+            box-shadow: 0 0 15px rgba(40, 167, 69, 0.6);
+        }
+
+        .fan-indicator {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #dc3545;
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 10px rgba(220, 53, 69, 0.5);
+        }
+
+        .fan-header {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .fan-icon {
+            font-size: 3rem;
+            margin-bottom: 10px;
+            transition: transform 0.3s ease;
+        }
+
+        .fan-control-button.active .fan-icon {
+            transform: rotate(180deg);
+        }
+
+        .fan-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #495057;
+            text-align: center;
+        }
+
+        .fan-status {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #dc3545;
+            margin-bottom: 10px;
+            transition: all 0.3s ease;
+        }
+
+        .fan-control-button.active .fan-status {
+            color: #28a745;
+        }
+
+        .fan-power {
+            font-size: 1rem;
+            color: #6c757d;
+            margin-bottom: 10px;
+            font-weight: 500;
+        }
+
+        .fan-time {
+            font-size: 0.9rem;
+            color: #6c757d;
+            font-style: italic;
+        }
+
+        @media (max-width: 1200px) {
+            .dashboard-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .npk-card {
+                grid-column: span 2 !important;
+            }
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2rem;
+            }
+
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .npk-card {
+                grid-column: span 1 !important;
+            }
+
+            .npk-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .card-value {
+                font-size: 2rem;
+            }
+        }
+
+        .alert {
+            padding: 15px 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideIn 0.5s ease;
+        }
+
+        .alert-warning {
+            background: rgba(243, 156, 18, 0.2);
+            border: 1px solid var(--warning);
+            color: var(--warning);
+        }
+
+        .alert-info {
+            background: rgba(52, 152, 219, 0.2);
+            border: 1px solid var(--info);
+            color: var(--info);
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateY(-20px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">🌱 Smart Farm Management</div>
+            <ul class="nav-menu">
+                <li class="nav-item">
+                    <a href="#" class="nav-link active" data-page="homepage">
+                        <span>🏠</span> Dashboard
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" data-page="history">
+                        <span>📊</span> History
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" data-page="actuators">
+                        <span>🎛️</span> Actuators
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" data-page="settings">
+                        <span>⚙️</span> Settings
+                    </a>
+                </li>
+            </ul>
+            <div class="nav-status">
+                <div class="status-indicator-nav" id="navStatusDot"></div>
+                <span id="navStatusText">Disconnected</span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Page Content -->
+    <div class="page-content">
+        <!-- Page 1: Homepage - Real-time Monitoring -->
+        <div id="homepage" class="page active">
+            <div class="container">
+                <header>
+                    <h1>🌱 Smart Greenhouse Dashboard</h1>
+                </header>
+
+                <div id="alerts"></div>
+
+        <div class="dashboard-grid">
+            <!-- Air Temperature Card -->
+            <div class="card clickable-card" onclick="scrollToChart('tempHumidityChart')">
+                <button class="info-btn" onclick="event.stopPropagation(); showInfoModal('temperature')">ℹ</button>
+                <div class="card-header">
+                    <div class="card-icon">🌡️</div>
+                    <div class="card-title">Air Temperature</div>
+                </div>
+                <div class="card-value" id="tempValue">--</div>
+                <div class="card-unit">°C</div>
+                <div class="status-indicator" id="tempStatus">No data</div>
+                <div class="sensor-info">Optimal: 18-25°C<br>Critical: <10°C or >35°C</div>
+                <div class="recommendation" id="tempRecommendation" style="display: none;"></div>
+                <div class="card-timestamp" id="tempTime">No data</div>
+            </div>
+
+            <!-- Air Humidity Card -->
+            <div class="card clickable-card" onclick="scrollToChart('tempHumidityChart')">
+                <button class="info-btn" onclick="event.stopPropagation(); showInfoModal('humidity')">ℹ</button>
+                <div class="card-header">
+                    <div class="card-icon">💧</div>
+                    <div class="card-title">Air Humidity</div>
+                </div>
+                <div class="card-value" id="humidityValue">--</div>
+                <div class="card-unit">%</div>
+                <div class="status-indicator" id="humidityStatus">No data</div>
+                <div class="sensor-info">Optimal: 60-80%<br>Critical: <40% or >90%</div>
+                <div class="recommendation" id="humidityRecommendation" style="display: none;"></div>
+                <div class="card-timestamp" id="humidityTime">No data</div>
+            </div>
+
+            <!-- Light Intensity Card -->
+            <div class="card clickable-card" onclick="scrollToChart('lightChart')">
+                <button class="info-btn" onclick="event.stopPropagation(); showInfoModal('light')">ℹ</button>
+                <div class="card-header">
+                    <div class="card-icon">🔆</div>
+                    <div class="card-title">Light Intensity</div>
+                </div>
+                <div class="card-value" id="lightValue">--</div>
+                <div class="card-unit">lux</div>
+                <div class="status-indicator" id="lightStatus">No data</div>
+                <div class="sensor-info">Optimal: 15,000-25,000 lux<br>Critical: <5,000 or >50,000 lux</div>
+                <div class="recommendation" id="lightRecommendation" style="display: none;"></div>
+                <div class="card-timestamp" id="lightTime">No data</div>
+            </div>
+
+            <!-- Soil Temperature Card -->
+            <div class="card clickable-card" onclick="scrollToChart('soilTempChart')">
+                <button class="info-btn" onclick="event.stopPropagation(); showInfoModal('soilTemperature')">ℹ</button>
+                <div class="card-header">
+                    <div class="card-icon">🌡️</div>
+                    <div class="card-title">Soil Temperature</div>
+                </div>
+                <div class="card-value" id="soilTempValue">--</div>
+                <div class="card-unit">°C</div>
+                <div class="status-indicator" id="soilTempStatus">No data</div>
+                <div class="sensor-info">Optimal: 20-28°C<br>Critical: <15°C or >35°C</div>
+                <div class="recommendation" id="soilTempRecommendation" style="display: none;"></div>
+                <div class="card-timestamp" id="soilTempTime">No data</div>
+            </div>
+
+            <!-- Soil Humidity Card -->
+            <div class="card clickable-card" onclick="scrollToChart('soilHumidityChart')">
+                <button class="info-btn" onclick="event.stopPropagation(); showInfoModal('soilHumidity')">ℹ</button>
+                <div class="card-header">
+                    <div class="card-icon">🌱</div>
+                    <div class="card-title">Soil Humidity</div>
+                </div>
+                <div class="card-value" id="soilHumidityValue">--</div>
+                <div class="card-unit">%</div>
+                <div class="status-indicator" id="soilHumidityStatus">No data</div>
+                <div class="sensor-info">Optimal: 60-80%<br>Critical: <40% or >90%</div>
+                <div class="recommendation" id="soilHumidityRecommendation" style="display: none;"></div>
+                <div class="card-timestamp" id="soilHumidityTime">No data</div>
+            </div>
+
+            <!-- pH Level Card -->
+            <div class="card clickable-card" onclick="scrollToChart('phChart')">
+                <button class="info-btn" onclick="event.stopPropagation(); showInfoModal('ph')">ℹ</button>
+                <div class="card-header">
+                    <div class="card-icon">🧪</div>
+                    <div class="card-title">Soil pH Level</div>
+                </div>
+                <div class="card-content">
+                    <div class="card-value" id="phValue">--</div>
+                    <div class="card-unit">pH</div>
+                </div>
+                <div class="status-indicator" id="phStatus">No data</div>
+                <div class="sensor-info">Optimal: 6.0-7.0<br>Critical: <5.0 or >8.0</div>
+                <div class="recommendation" id="phRecommendation" style="display: none;"></div>
+                <div class="card-timestamp" id="phTime">No data</div>
+            </div>
+
+            <!-- NPK Card -->
+            <div class="card npk-card clickable-card" style="grid-column: span 3;" onclick="scrollToChart('npkChart')">
+                <button class="info-btn" onclick="event.stopPropagation(); showInfoModal('npk')">ℹ</button>
+                <div class="card-header">
+                    <div class="card-icon">🌿</div>
+                    <div class="card-title">Soil Nutrients (NPK)</div>
+                </div>
+                <div class="npk-grid">
+                    <div class="npk-item">
+                        <div class="npk-label">Nitrogen (N)</div>
+                        <div class="npk-value" id="nitrogenValue">--</div>
+                        <div class="card-unit">mg/kg</div>
+                        <div class="status-indicator npk-status" id="nitrogenStatus">--</div>
+                    </div>
+                    <div class="npk-item">
+                        <div class="npk-label">Phosphorus (P)</div>
+                        <div class="npk-value" id="phosphorusValue">--</div>
+                        <div class="card-unit">mg/kg</div>
+                        <div class="status-indicator npk-status" id="phosphorusStatus">--</div>
+                    </div>
+                    <div class="npk-item">
+                        <div class="npk-label">Potassium (K)</div>
+                        <div class="npk-value" id="potassiumValue">--</div>
+                        <div class="card-unit">mg/kg</div>
+                        <div class="status-indicator npk-status" id="potassiumStatus">--</div>
+                    </div>
+                </div>
+                <div class="sensor-info">Optimal: N>100, P>50, K>150 mg/kg<br>Critical: Any nutrient <30 mg/kg</div>
+                <div class="recommendation" id="npkRecommendation" style="display: none;"></div>
+                <div class="card-timestamp" id="npkTime">No data</div>
+            </div>
+        </div>
+
+        <!-- Charts Section -->
+        <div class="charts-section">
+            <!-- Temperature & Humidity Chart -->
+            <div class="chart-container">
+                <h3 class="chart-title">Temperature & Humidity Trends</h3>
+                <canvas id="tempHumidityChart"></canvas>
+            </div>
+
+            <!-- Light Intensity Chart -->
+            <div class="chart-container">
+                <h3 class="chart-title">Light Intensity Over Time</h3>
+                <canvas id="lightChart"></canvas>
+            </div>
+
+            <!-- Soil Monitoring Chart -->
+            <div class="chart-container">
+                <h3 class="chart-title">Soil pH Level Over Time</h3>
+                <canvas id="phChart"></canvas>
+            </div>
+
+            <!-- Soil Temperature Chart -->
+            <div class="chart-container">
+                <h3 class="chart-title">Soil Temperature Over Time</h3>
+                <canvas id="soilTempChart"></canvas>
+            </div>
+
+            <!-- Soil Humidity Chart -->
+            <div class="chart-container">
+                <h3 class="chart-title">Soil Humidity Over Time</h3>
+                <canvas id="soilHumidityChart"></canvas>
+            </div>
+
+            <!-- NPK Chart -->
+            <div class="chart-container">
+                <h3 class="chart-title">Soil Nutrients (NPK) Levels</h3>
+                <canvas id="npkChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Summary Statistics Section -->
+        <div class="charts-section">
+            <div class="chart-container">
+                <h3 class="chart-title">📊 Brassicaceae Monitoring Summary</h3>
+                <div class="summary-grid">
+                    <div class="summary-item">
+                        <div class="summary-icon">🌡️</div>
+                        <div class="summary-content">
+                            <div class="summary-label">Air Temperature Range</div>
+                            <div class="summary-value" id="tempRange">--°C to --°C</div>
+                            <div class="summary-status" id="tempSummaryStatus">No data</div>
+                        </div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-icon">💧</div>
+                        <div class="summary-content">
+                            <div class="summary-label">Air Humidity Range</div>
+                            <div class="summary-value" id="humidityRange">--% to --%</div>
+                            <div class="summary-status" id="humiditySummaryStatus">No data</div>
+                        </div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-icon">🔆</div>
+                        <div class="summary-content">
+                            <div class="summary-label">Light Intensity Range</div>
+                            <div class="summary-value" id="lightRange">-- to -- lux</div>
+                            <div class="summary-status" id="lightSummaryStatus">No data</div>
+                        </div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-icon">🧪</div>
+                        <div class="summary-content">
+                            <div class="summary-label">Soil pH Range</div>
+                            <div class="summary-value" id="phRange">-- to -- pH</div>
+                            <div class="summary-status" id="phSummaryStatus">No data</div>
+                        </div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-icon">🌱</div>
+                        <div class="summary-content">
+                            <div class="summary-label">Soil Moisture Range</div>
+                            <div class="summary-value" id="soilHumidityRange">--% to --%</div>
+                            <div class="summary-status" id="soilHumiditySummaryStatus">No data</div>
+                        </div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-icon">🌡️</div>
+                        <div class="summary-content">
+                            <div class="summary-label">Soil Temperature Range</div>
+                            <div class="summary-value" id="soilTempRange">--°C to --°C</div>
+                            <div class="summary-status" id="soilTempSummaryStatus">No data</div>
+                        </div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-icon">🌿</div>
+                        <div class="summary-content">
+                            <div class="summary-label">Nutrient Status</div>
+                            <div class="summary-value" id="nutrientStatus">N: -- P: -- K: --</div>
+                            <div class="summary-status" id="nutrientSummaryStatus">No data</div>
+                        </div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-icon">📈</div>
+                        <div class="summary-content">
+                            <div class="summary-label">Overall Health</div>
+                            <div class="summary-value" id="overallHealth">Calculating...</div>
+                            <div class="summary-status" id="overallHealthStatus">No data</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Additional Summary Information -->
+                <div class="summary-details">
+                    <div class="summary-detail-item">
+                        <h4>🌱 Brassicaceae Optimal Conditions</h4>
+                        <p><strong>Temperature:</strong> 18-25°C | <strong>Humidity:</strong> 60-80% | <strong>pH:</strong> 6.0-7.0</p>
+                        <p><strong>Soil Temp:</strong> 20-28°C | <strong>Soil Moisture:</strong> 60-80% | <strong>Light:</strong> 15,000-25,000 lux</p>
+                    </div>
+                    <div class="summary-detail-item">
+                        <h4>📊 Current Status</h4>
+                        <p id="currentStatus">Monitoring sensors for real-time data...</p>
+                    </div>
+                    <div class="summary-detail-item">
+                        <h4>🎯 Recommendations</h4>
+                        <p id="currentRecommendations">Awaiting sensor data for recommendations...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Panel -->
+        <div class="settings-panel">
+            <h3 class="chart-title">MQTT Connection Settings</h3>
+            <div class="settings-grid">
+                <div class="input-group">
+                    <label for="mqttBroker">MQTT Broker</label>
+                    <input type="text" id="mqttBroker" value="wss://broker.emqx.io:8084/mqtt" placeholder="wss://broker-ip:port/mqtt">
+                </div>
+                <div class="input-group">
+                    <label for="mqttUser">Username (optional)</label>
+                    <input type="text" id="mqttUser" value="myuser" placeholder="Username">
+                </div>
+                <div class="input-group">
+                    <label for="mqttPass">Password (optional)</label>
+                    <input type="password" id="mqttPass" value="*smart2025!" placeholder="Password">
+                </div>
+            </div>
+            <button class="btn" onclick="reconnectMQTT()">Reconnect</button>
+            <div id="connectionStatus" style="margin-top: 15px; padding: 10px; border-radius: 8px; text-align: center;">
+                <span id="statusText">Checking connection...</span>
+            </div>
+        </div>
+            </div>
+        </div>
+
+        <!-- Page 2: History & Analytics -->
+        <div id="history" class="page">
+            <div class="container">
+                <div class="page-header">
+                    <h1 class="page-title">📊 Historical Data & Analytics</h1>
+                    <p class="page-subtitle">Analyze trends, export data, and track performance over time</p>
+                </div>
+
+                <!-- History Header with Export Button -->
+                <div class="history-header">
+                    <div class="time-range-selector">
+                        <button class="time-btn active" data-range="1h">Last Hour</button>
+                        <button class="time-btn" data-range="24h">Last 24 Hours</button>
+                        <button class="time-btn" data-range="7d">Last 7 Days</button>
+                        <button class="time-btn" data-range="30d">Last 30 Days</button>
+                    </div>
+                    <button class="export-btn" onclick="showExportModal()">
+                        <span>📤</span> Export Data
+                    </button>
+                </div>
+
+                <!-- Export Modal -->
+                <div id="exportModal" class="export-section" style="display: none;">
+                    <h3>📤 Data Export</h3>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Export Format</label>
+                            <select id="exportFormat">
+                                <option value="csv">CSV (Excel Compatible)</option>
+                                <option value="json">JSON (Raw Data)</option>
+                                <option value="pdf">PDF Report</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Date Range</label>
+                            <input type="date" id="exportStartDate">
+                            <input type="date" id="exportEndDate">
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn-primary" onclick="exportData()">Export Data</button>
+                        <button class="btn-secondary" onclick="hideExportModal()">Cancel</button>
+                    </div>
+                </div>
+
+                <!-- Enhanced Charts -->
+                <div class="charts-section">
+                    <div class="chart-container">
+                        <h3 class="chart-title">📈 Temperature & Humidity Trends</h3>
+                        <canvas id="historyTempHumidityChart"></canvas>
+                    </div>
+                    <div class="chart-container">
+                        <h3 class="chart-title">🌱 Soil Conditions Over Time</h3>
+                        <canvas id="historySoilChart"></canvas>
+                    </div>
+                    <div class="chart-container">
+                        <h3 class="chart-title">🌿 Nutrient Levels History</h3>
+                        <canvas id="historyNPKChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Performance Metrics -->
+                <div class="chart-container">
+                    <h3 class="chart-title">📊 Performance Metrics</h3>
+                    <div class="summary-grid">
+                        <div class="summary-item">
+                            <div class="summary-icon">📊</div>
+                            <div class="summary-content">
+                                <div class="summary-label">Average Temperature</div>
+                                <div class="summary-value" id="avgTemp">--°C</div>
+                            </div>
+                        </div>
+                        <div class="summary-item">
+                            <div class="summary-icon">📊</div>
+                            <div class="summary-content">
+                                <div class="summary-label">Average Humidity</div>
+                                <div class="summary-value" id="avgHumidity">--%</div>
+                            </div>
+                        </div>
+                        <div class="summary-item">
+                            <div class="summary-icon">📊</div>
+                            <div class="summary-content">
+                                <div class="summary-label">Peak Light</div>
+                                <div class="summary-value" id="peakLight">-- lux</div>
+                            </div>
+                        </div>
+                        <div class="summary-item">
+                            <div class="summary-icon">📊</div>
+                            <div class="summary-content">
+                                <div class="summary-label">pH Stability</div>
+                                <div class="summary-value" id="phStability">--</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Page 3: Settings & Farmer Information -->
+        <div id="settings" class="page">
+            <div class="container">
+                <div class="page-header">
+                    <h1 class="page-title">⚙️ Settings & Farm Management</h1>
+                    <p class="page-subtitle">Configure sensors, manage crops, and customize your farm settings</p>
+                </div>
+
+                <!-- MQTT Connection Settings -->
+                <div class="settings-section">
+                    <h3>🔌 MQTT Connection Settings</h3>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="settingsMqttBroker">MQTT Broker</label>
+                            <input type="text" id="settingsMqttBroker" value="wss://broker.emqx.io:8084/mqtt" placeholder="wss://broker-ip:port/mqtt">
+                        </div>
+                        <div class="form-group">
+                            <label for="settingsMqttUser">Username</label>
+                            <input type="text" id="settingsMqttUser" value="myuser" placeholder="Username">
+                        </div>
+                        <div class="form-group">
+                            <label for="settingsMqttPass">Password</label>
+                            <input type="password" id="settingsMqttPass" value="*smart2025!" placeholder="Password">
+                        </div>
+                    </div>
+                    <button class="btn-primary" onclick="testConnection()">Test Connection</button>
+                </div>
+
+                <!-- Sensor Calibration & Thresholds -->
+                <div class="settings-section">
+                    <h3>🎯 Sensor Calibration & Thresholds</h3>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Temperature Optimal Range</label>
+                            <input type="number" id="tempMin" value="18" placeholder="Min °C">
+                            <input type="number" id="tempMax" value="25" placeholder="Max °C">
+                        </div>
+                        <div class="form-group">
+                            <label>Humidity Optimal Range</label>
+                            <input type="number" id="humidityMin" value="60" placeholder="Min %">
+                            <input type="number" id="humidityMax" value="80" placeholder="Max %">
+                        </div>
+                        <div class="form-group">
+                            <label>pH Optimal Range</label>
+                            <input type="number" id="phMin" value="6.0" step="0.1" placeholder="Min pH">
+                            <input type="number" id="phMax" value="7.0" step="0.1" placeholder="Max pH">
+                        </div>
+                        <div class="form-group">
+                            <label>Soil Humidity Optimal Range</label>
+                            <input type="number" id="soilHumidityMin" value="60" placeholder="Min %">
+                            <input type="number" id="soilHumidityMax" value="80" placeholder="Max %">
+                        </div>
+                        <div class="form-group">
+                            <label>Soil Temperature Optimal Range</label>
+                            <input type="number" id="soilTempMin" value="20" placeholder="Min °C">
+                            <input type="number" id="soilTempMax" value="28" placeholder="Max °C">
+                        </div>
+                    </div>
+                    <button class="btn-primary" onclick="saveThresholds()">Save Thresholds</button>
+                </div>
+
+                <!-- Plant & Crop Management -->
+                <div class="settings-section">
+                    <h3>🌱 Plant & Crop Management</h3>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Current Crop</label>
+                            <select id="currentCrop">
+                                <option value="brassicaceae">Brassicaceae (Cabbage Family)</option>
+                                <option value="tomato">Tomatoes</option>
+                                <option value="lettuce">Lettuce</option>
+                                <option value="pepper">Peppers</option>
+                                <option value="herbs">Herbs</option>
+                                <option value="custom">Custom</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Growth Stage</label>
+                            <select id="growthStage">
+                                <option value="seedling">Seedling</option>
+                                <option value="vegetative">Vegetative</option>
+                                <option value="flowering">Flowering</option>
+                                <option value="fruiting">Fruiting</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Planting Date</label>
+                            <input type="date" id="plantingDate">
+                        </div>
+                        <div class="form-group">
+                            <label>Expected Harvest</label>
+                            <input type="date" id="harvestDate">
+                        </div>
+                    </div>
+                    <button class="btn-primary" onclick="saveCropInfo()">Save Crop Information</button>
+                </div>
+
+                <!-- Automation Settings -->
+                <div class="settings-section">
+                    <h3>🤖 Automation Settings</h3>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Auto Watering</label>
+                            <select id="autoWatering">
+                                <option value="disabled">Disabled</option>
+                                <option value="enabled">Enabled</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Watering Threshold</label>
+                            <input type="number" id="wateringThreshold" value="30" placeholder="Soil humidity %">
+                        </div>
+                        <div class="form-group">
+                            <label>Lighting Schedule</label>
+                            <input type="time" id="lightOn" value="06:00">
+                            <input type="time" id="lightOff" value="18:00">
+                        </div>
+                        <div class="form-group">
+                            <label>Ventilation Trigger</label>
+                            <input type="number" id="ventilationTemp" value="28" placeholder="Temperature °C">
+                        </div>
+                    </div>
+                    <button class="btn-primary" onclick="saveAutomation()">Save Automation Settings</button>
+                </div>
+
+                <!-- Farm Information -->
+                <div class="settings-section">
+                    <h3>🏡 Farm Information</h3>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Greenhouse Size</label>
+                            <input type="text" id="greenhouseSize" placeholder="e.g., 10m x 5m">
+                        </div>
+                        <div class="form-group">
+                            <label>Location</label>
+                            <input type="text" id="farmLocation" placeholder="City, Country">
+                        </div>
+                        <div class="form-group">
+                            <label>Equipment Inventory</label>
+                            <textarea id="equipmentInventory" placeholder="List your sensors, pumps, lights, etc."></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Notes</label>
+                            <textarea id="farmNotes" placeholder="Additional notes about your farm setup"></textarea>
+                        </div>
+                    </div>
+                    <button class="btn-primary" onclick="saveFarmInfo()">Save Farm Information</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Page 4: Actuators Control -->
+        <div id="actuators" class="page">
+            <div class="container">
+                <div class="page-header">
+                    <h1 class="page-title">🎛️ Actuator Control Center</h1>
+                    <p class="page-subtitle">Control greenhouse equipment and monitor system status</p>
+                    <button class="btn" onclick="checkMQTTStatus()" style="margin-top: 10px;">🔍 Check MQTT Status</button>
+                </div>
+
+                <!-- Actuator Controls Grid -->
+                <div class="dashboard-grid">
+                    <!-- Fan Control Button -->
+                    <button class="fan-control-button" id="fanButton" onclick="toggleFan()" style="cursor: pointer; user-select: none;">
+                        <div class="fan-indicator" id="fanIndicator"></div>
+                        <div class="fan-header">
+                            <div class="fan-icon">🌪️</div>
+                            <div class="fan-title">Industrial Fan</div>
+                        </div>
+                        <div class="fan-status" id="fanStatus">OFF</div>
+                        <div class="fan-power" id="fanPower">0W</div>
+                        <div class="fan-time" id="fanTime">Ready</div>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // MQTT Connection System
+        let mqttClient = null;
+        let isConnected = false;
+        
+        // Connect to MQTT Broker
+        function connectMQTT() {
+            let broker = document.getElementById('mqttBroker').value.trim();
+            const username = document.getElementById('mqttUser').value.trim();
+            const password = document.getElementById('mqttPass').value;
+
+            // Validate and fix broker URL if needed
+            if (broker && !broker.endsWith('/mqtt') && broker.includes(':8083')) {
+                console.log('⚠️ Broker URL missing /mqtt path, fixing...');
+                broker = broker.replace(/:8083$/, ':8083/mqtt');
+                document.getElementById('mqttBroker').value = broker;
+                console.log('✅ Fixed broker URL:', broker);
+            }
+
+            console.log('🔌 Attempting MQTT connection...');
+            console.log('📡 Broker:', broker);
+            console.log('👤 Username:', username || 'Not provided');
+            console.log('🔐 Password:', password ? '***' : 'Not provided');
+
+            // Validate broker URL
+            if (!broker) {
+                console.error('❌ Broker URL is empty!');
+                showAlert('Please enter a valid MQTT broker URL', 'warning');
+                return;
+            }
+
+            if (!broker.startsWith('ws://') && !broker.startsWith('wss://')) {
+                console.error('❌ Broker URL must start with ws:// or wss://');
+                showAlert('Invalid broker URL format. Must start with ws:// or wss://', 'warning');
+                return;
+            }
+            
+            // For HTTPS deployments, prefer wss:// for security
+            if (window.location.protocol === 'https:' && broker.startsWith('ws://')) {
+                console.warn('⚠️ HTTPS page detected - consider using wss:// for secure connection');
+                showAlert('⚠️ For HTTPS sites, consider using wss:// for secure WebSocket connection', 'warning');
+            }
+
+            // Save to localStorage
+            localStorage.setItem('mqttBroker', broker);
+            localStorage.setItem('mqttUser', username);
+            localStorage.setItem('mqttPass', password);
+
+            const options = {
+                clean: true,
+                connectTimeout: 4000,
+                clientId: 'greenhouse_dashboard_' + Math.random().toString(16).substr(2, 8)
+            };
+
+            if (username && password) {
+                options.username = username;
+                options.password = password;
+            }
+
+            try {
+                console.log('🚀 Creating MQTT client with options:', {
+                    broker: broker,
+                    clientId: options.clientId,
+                    hasAuth: !!(username && password),
+                    connectTimeout: options.connectTimeout
+                });
+
+                mqttClient = mqtt.connect(broker, options);
+
+                mqttClient.on('connect', () => {
+                    console.log('✅ Successfully connected to MQTT broker');
+                    console.log('🔗 Client ID:', mqttClient.options.clientId);
+                    console.log('🌐 Broker URL:', broker);
+                    isConnected = true;
+                    updateConnectionStatus(true);
+                    
+                    // Subscribe to all topics including fan status
+                    const topics = [
+                        'greenhouse/temperature',
+                        'greenhouse/humidity', 
+                        'greenhouse/light',
+                        'greenhouse/ph',
+                        'greenhouse/soil_humidity',
+                        'greenhouse/soil_temperature',
+                        'greenhouse/nitrogen',
+                        'greenhouse/phosphorus',
+                        'greenhouse/potassium',
+                        'greenhouse/actuators/fan_status',
+                        'greenhouse/actuators/auto_mode_status',
+                        'greenhouse/actuators/temp_threshold_status'
+                    ];
+                    
+                    console.log('📋 Subscribing to topics:', topics);
+                    topics.forEach(topic => {
+                        mqttClient.subscribe(topic);
+                        console.log(`📥 Subscribed to: ${topic}`);
+                    });
+
+                    showAlert('Successfully connected to MQTT broker', 'info');
+                });
+
+                mqttClient.on('error', (error) => {
+                    console.error('❌ MQTT Connection Error:');
+                    console.error('   Error Code:', error.code);
+                    console.error('   Error Message:', error.message);
+                    console.error('   Broker:', broker);
+                    console.error('   Full Error:', error);
+                    
+                    updateConnectionStatus(false);
+                    showAlert(`MQTT connection error: ${error.message}`, 'warning');
+                });
+
+                mqttClient.on('disconnect', () => {
+                    console.log('🔌 Disconnected from MQTT broker');
+                    console.log('📊 Connection state:', mqttClient.connectionState);
+                    updateConnectionStatus(false);
+                });
+
+                mqttClient.on('message', (topic, message) => {
+                    console.log(`📨 Received MQTT message:`);
+                    console.log(`   Topic: ${topic}`);
+                    console.log(`   Message: ${message.toString()}`);
+                    console.log(`   Timestamp: ${new Date().toISOString()}`);
+                    
+                    handleMessage(topic, message.toString());
+                });
+
+                mqttClient.on('reconnect', () => {
+                    console.log('🔄 MQTT client reconnecting...');
+                    showAlert('Reconnecting to MQTT broker...', 'info');
+                });
+
+                mqttClient.on('offline', () => {
+                    console.log('📴 MQTT client went offline');
+                    updateConnectionStatus(false);
+                    showAlert('MQTT connection lost - attempting to reconnect', 'warning');
+                });
+
+            } catch (error) {
+                console.error('💥 Failed to create MQTT client:');
+                console.error('   Error:', error);
+                console.error('   Broker:', broker);
+                console.error('   Stack trace:', error.stack);
+                showAlert(`Failed to connect to MQTT broker: ${error.message}`, 'warning');
+            }
+        }
+        
+        // Handle MQTT messages
+        function handleMQTTMessage(topic, message) {
+            switch(topic) {
+                case 'greenhouse/actuators/fan_status':
+                    console.log(`🎛️ Fan status update: ${message}`);
+                    updateFanStatusFromMQTT(message === 'ON');
+                    break;
+                case 'greenhouse/temperature':
+                    document.getElementById('tempValue').textContent = parseFloat(message).toFixed(1);
+                    document.getElementById('tempTime').textContent = 'Updated: ' + new Date().toLocaleTimeString();
+                    break;
+                case 'greenhouse/humidity':
+                    document.getElementById('humidityValue').textContent = parseFloat(message).toFixed(1);
+                    document.getElementById('humidityTime').textContent = 'Updated: ' + new Date().toLocaleTimeString();
+                    break;
+                case 'greenhouse/light':
+                    document.getElementById('lightValue').textContent = parseFloat(message).toFixed(1);
+                    document.getElementById('lightTime').textContent = 'Updated: ' + new Date().toLocaleTimeString();
+                    break;
+                case 'greenhouse/ph':
+                    document.getElementById('phValue').textContent = parseFloat(message).toFixed(1);
+                    document.getElementById('phTime').textContent = 'Updated: ' + new Date().toLocaleTimeString();
+                    break;
+                case 'greenhouse/soil_humidity':
+                    document.getElementById('soilHumidityValue').textContent = parseFloat(message).toFixed(1);
+                    document.getElementById('soilHumidityTime').textContent = 'Updated: ' + new Date().toLocaleTimeString();
+                    break;
+                case 'greenhouse/soil_temperature':
+                    document.getElementById('soilTempValue').textContent = parseFloat(message).toFixed(1);
+                    document.getElementById('soilTempTime').textContent = 'Updated: ' + new Date().toLocaleTimeString();
+                    break;
+                case 'greenhouse/nitrogen':
+                    document.getElementById('nitrogenValue').textContent = Math.round(parseFloat(message));
+                    document.getElementById('npkTime').textContent = 'Updated: ' + new Date().toLocaleTimeString();
+                    break;
+                case 'greenhouse/phosphorus':
+                    document.getElementById('phosphorusValue').textContent = Math.round(parseFloat(message));
+                    break;
+                case 'greenhouse/potassium':
+                    document.getElementById('potassiumValue').textContent = Math.round(parseFloat(message));
+                    break;
+            }
+        }
+        
+        // Update fan status from MQTT
+        function updateFanStatusFromMQTT(isOn) {
+            console.log(`🔄 Updating fan status from MQTT: ${isOn ? 'ON' : 'OFF'}`);
+            
+            // Update local state
+            fanState = isOn;
+            
+            // Update visual indicators
+            const buttonElement = document.getElementById('fanButton');
+            const statusElement = document.getElementById('fanStatus');
+            const powerElement = document.getElementById('fanPower');
+            const timeElement = document.getElementById('fanTime');
+            
+            if (isOn) {
+                buttonElement.classList.add('active');
+                statusElement.textContent = 'ON';
+                powerElement.textContent = '250W';
+                timeElement.textContent = new Date().toLocaleTimeString();
+            } else {
+                buttonElement.classList.remove('active');
+                statusElement.textContent = 'OFF';
+                powerElement.textContent = '0W';
+                timeElement.textContent = 'Ready';
+            }
+        }
+        
+        // Update actuator status from MQTT messages
+        function updateActuatorStatusFromMQTT(actuatorType, status) {
+            const isOn = (status === 'ON');
+            const cardElement = document.getElementById(`${actuatorType}Card`);
+            const indicatorElement = document.getElementById(`${actuatorType}Indicator`);
+            const statusElement = document.getElementById(`${actuatorType}Status`);
+            const powerElement = document.getElementById(`${actuatorType}Power`);
+            const valueElement = document.getElementById(`${actuatorType}Value`);
+            const timeElement = document.getElementById(`${actuatorType}Time`);
+            
+            // Update the state
+            actuatorStates[actuatorType] = isOn;
+            
+            // Update visual indicators
+            if (isOn) {
+                cardElement.classList.add('active');
+                indicatorElement.classList.add('active');
+                statusElement.textContent = 'ONLINE';
+                statusElement.className = 'status-indicator status-good';
+                valueElement.textContent = 'ON';
+                valueElement.style.color = 'var(--success)';
+                valueElement.style.fontWeight = 'bold';
+                powerElement.textContent = '250W';
+                timeElement.textContent = new Date().toLocaleTimeString();
+            } else {
+                cardElement.classList.remove('active');
+                indicatorElement.classList.remove('active');
+                statusElement.textContent = 'OFFLINE';
+                statusElement.className = 'status-indicator';
+                valueElement.textContent = 'OFF';
+                valueElement.style.color = 'var(--text-muted)';
+                valueElement.style.fontWeight = 'normal';
+                powerElement.textContent = '0W';
+                timeElement.textContent = 'Ready';
+            }
+            
+            console.log(`📡 MQTT: ${actuatorType} status updated to ${status}`);
+        }
+        
+        // Update connection status
+        function updateConnectionStatus(connected) {
+            const statusElement = document.getElementById('statusText');
+            const connectionDiv = document.getElementById('connectionStatus');
+            
+            if (statusElement) {
+                statusElement.textContent = connected ? '✅ MQTT Connected' : '❌ MQTT Disconnected';
+                statusElement.style.color = connected ? '#4CAF50' : '#f44336';
+            }
+            
+            if (connectionDiv) {
+                connectionDiv.style.backgroundColor = connected ? 'rgba(76, 175, 80, 0.1)' : 'rgba(244, 67, 54, 0.1)';
+                connectionDiv.style.border = connected ? '1px solid #4CAF50' : '1px solid #f44336';
+            }
+        }
+        
+        // Reconnect to MQTT
+        function reconnectMQTT() {
+            console.log('🔄 Attempting MQTT reconnection...');
+            
+            if (mqttClient) {
+                console.log('🔌 Closing existing MQTT client...');
+                try {
+                    mqttClient.end(true); // Force close
+                    console.log('✅ Existing client closed');
+                } catch (error) {
+                    console.error('⚠️ Error closing existing client:', error);
+                }
+            }
+            
+            // Clear the client reference
+            mqttClient = null;
+            isConnected = false;
+            updateConnectionStatus(false);
+            
+            // Wait a moment before reconnecting
+            setTimeout(() => {
+                console.log('🔄 Starting fresh MQTT connection...');
+                connectMQTT();
+            }, 2000);
+        }
+        
+        // Check connection status
+        function checkConnectionStatus() {
+            console.log('🔍 Manual connection status check:');
+            console.log('   MQTT Client exists:', !!mqttClient);
+            console.log('   MQTT Client connected:', mqttClient ? mqttClient.connected : 'No client');
+            console.log('   isConnected flag:', isConnected);
+            console.log('   Client state:', mqttClient ? mqttClient.connectionState : 'No client');
+            
+            if (mqttClient && mqttClient.connected) {
+                console.log('✅ MQTT is connected and working');
+                showAlert('✅ MQTT connection is active', 'success');
+                return true;
+            } else {
+                console.log('❌ MQTT is not connected');
+                showAlert('❌ MQTT is disconnected - click Reconnect', 'warning');
+                return false;
+            }
+        }
+        
+        // Fan Control System
+        let fanState = false;
+        
+        // Make MQTT client globally available
+        window.mqttClient = mqttClient;
+        window.connectMQTT = connectMQTT;
+        window.reconnectMQTT = reconnectMQTT;
+        window.checkConnectionStatus = checkConnectionStatus;
+        
+        // Fan toggle function
+        function toggleFan() {
+            console.log(`🖱️ Fan button clicked`);
+            console.log(`Current state: ${fanState}`);
+            
+            // Toggle fan state
+            fanState = !fanState;
+            console.log(`New state: ${fanState}`);
+            
+            // Update visual indicators
+            const buttonElement = document.getElementById('fanButton');
+            const indicatorElement = document.getElementById('fanIndicator');
+            const statusElement = document.getElementById('fanStatus');
+            const powerElement = document.getElementById('fanPower');
+            const timeElement = document.getElementById('fanTime');
+            
+            if (fanState) {
+                // Turn fan ON
+                buttonElement.classList.add('active');
+                statusElement.textContent = 'ON';
+                powerElement.textContent = '250W';
+                timeElement.textContent = new Date().toLocaleTimeString();
+                
+                console.log('✅ Fan turned ON');
+                showAlert('🌪️ Fan activated - Status: ON', 'success');
+            } else {
+                // Turn fan OFF
+                buttonElement.classList.remove('active');
+                statusElement.textContent = 'OFF';
+                powerElement.textContent = '0W';
+                timeElement.textContent = 'Ready';
+                
+                console.log('❌ Fan turned OFF');
+                showAlert('🌪️ Fan deactivated - Status: OFF', 'info');
+            }
+            
+            // Send MQTT command if connected
+            sendFanCommand(fanState);
+        }
+        
+        // Send MQTT command to Arduino
+        function sendFanCommand(isOn) {
+            const command = isOn ? 'ON' : 'OFF';
+            const topic = 'greenhouse/actuators/fan';
+            
+            console.log(`📡 Sending MQTT command:`);
+            console.log(`   Topic: ${topic}`);
+            console.log(`   Command: ${command}`);
+            
+            if (mqttClient && mqttClient.connected) {
+                try {
+                    mqttClient.publish(topic, command, { qos: 1 });
+                    console.log(`✅ Fan ${command} command sent to Arduino via MQTT`);
+                    showAlert(`📡 Fan ${command} command sent to Arduino`, 'info');
+                } catch (error) {
+                    console.error('❌ Failed to send MQTT command:', error);
+                    showAlert('❌ Failed to send command to Arduino', 'warning');
+                }
+            } else {
+                console.log('⚠️ MQTT not connected - command simulated');
+                console.log('   MQTT Client exists:', !!mqttClient);
+                console.log('   MQTT Client connected:', mqttClient ? mqttClient.connected : 'No client');
+                showAlert('⚠️ MQTT not connected - fan control simulated', 'warning');
+                
+                // Try to connect if not connected
+                if (window.connectMQTT) {
+                    console.log('🔄 Attempting to connect MQTT...');
+                    window.connectMQTT();
+                }
+            }
+        }
+        
+        // Show alert message
+        function showAlert(message, type = 'info') {
+            const alertsDiv = document.getElementById('alerts');
+            if (!alertsDiv) return;
+            
+            const alert = document.createElement('div');
+            alert.className = `alert alert-${type}`;
+            alert.innerHTML = `
+                <span>${type === 'warning' ? '⚠️' : type === 'success' ? '✅' : 'ℹ️'}</span>
+                <span>${message}</span>
+            `;
+            alertsDiv.appendChild(alert);
+
+            // Remove alert after 5 seconds
+            setTimeout(() => {
+                alert.style.animation = 'slideOut 0.5s ease';
+                setTimeout(() => alert.remove(), 500);
+            }, 5000);
+        }
+        
+        // Make functions globally available
+        window.toggleFan = toggleFan;
+        window.sendFanCommand = sendFanCommand;
+
+        function switchPage(pageId) {
+            // Hide all pages
+            document.querySelectorAll('.page').forEach(page => {
+                page.classList.remove('active');
+            });
+            
+            // Remove active class from all nav links
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.classList.remove('active');
+            });
+            
+            // Show selected page
+            document.getElementById(pageId).classList.add('active');
+            
+            // Add active class to clicked nav link
+            document.querySelector(`[data-page="${pageId}"]`).classList.add('active');
+            
+            currentPage = pageId;
+            
+            // Initialize page-specific features
+            if (pageId === 'history') {
+                initializeHistoryPage();
+            } else if (pageId === 'settings') {
+                loadSettings();
+            }
+        }
+
+        // Navigation event listeners
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const pageId = this.getAttribute('data-page');
+                    switchPage(pageId);
+                });
+            });
+            
+            // Check MQTT status every 5 seconds
+            setInterval(checkMQTTStatus, 5000);
+            
+            // Initial status check
+            setTimeout(checkMQTTStatus, 1000);
+            
+            // Verify fan card is clickable
+            setTimeout(() => {
+                const fanCard = document.getElementById('fanCard');
+                if (fanCard) {
+                    console.log('✅ Fan card found and ready for clicks');
+                } else {
+                    console.log('❌ Fan card not found');
+                }
+            }, 1000);
+        });
+
+        // History Page Functions
+        function initializeHistoryPage() {
+            // Initialize time range buttons
+            document.querySelectorAll('.time-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    updateHistoryCharts(this.getAttribute('data-range'));
+                });
+            });
+            
+            // Initialize history charts
+            initializeHistoryCharts();
+        }
+
+        function updateHistoryCharts(range) {
+            // This would filter data based on time range
+            console.log('Updating charts for range:', range);
+            // Implementation would filter chartData based on selected range
+        }
+
+        function initializeHistoryCharts() {
+            // Initialize history-specific charts with more data points
+            // These would be separate from the real-time charts
+        }
+
+        // Export Modal Functions
+        function showExportModal() {
+            const modal = document.getElementById('exportModal');
+            modal.style.display = 'block';
+            
+            // Set default dates (last 7 days)
+            const today = new Date();
+            const lastWeek = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+            
+            document.getElementById('exportStartDate').value = lastWeek.toISOString().split('T')[0];
+            document.getElementById('exportEndDate').value = today.toISOString().split('T')[0];
+        }
+
+        function hideExportModal() {
+            const modal = document.getElementById('exportModal');
+            modal.style.display = 'none';
+        }
+
+        // Data Export Functions
+        function exportData() {
+            const format = document.getElementById('exportFormat').value;
+            const startDate = document.getElementById('exportStartDate').value;
+            const endDate = document.getElementById('exportEndDate').value;
+            
+            if (!startDate || !endDate) {
+                alert('Please select both start and end dates');
+                return;
+            }
+            
+            // Create export data
+            const exportData = {
+                temperature: chartData.temperature,
+                humidity: chartData.humidity,
+                light: chartData.light,
+                ph: chartData.ph,
+                soilHumidity: chartData.soilHumidity,
+                soilTemperature: chartData.soilTemperature,
+                nitrogen: chartData.nitrogen,
+                phosphorus: chartData.phosphorus,
+                potassium: chartData.potassium,
+                labels: chartData.labels
+            };
+            
+            if (format === 'csv') {
+                exportToCSV(exportData);
+            } else if (format === 'json') {
+                exportToJSON(exportData);
+            } else if (format === 'pdf') {
+                exportToPDF(exportData);
+            }
+            
+            // Hide modal after export
+            hideExportModal();
+        }
+
+        function exportToCSV(data) {
+            let csv = 'Timestamp,Temperature,Humidity,Light,pH,Soil Humidity,Soil Temperature,Nitrogen,Phosphorus,Potassium\n';
+            
+            for (let i = 0; i < data.labels.length; i++) {
+                csv += `${data.labels[i]},${data.temperature[i] || ''},${data.humidity[i] || ''},${data.light[i] || ''},${data.ph[i] || ''},${data.soilHumidity[i] || ''},${data.soilTemperature[i] || ''},${data.nitrogen[i] || ''},${data.phosphorus[i] || ''},${data.potassium[i] || ''}\n`;
+            }
+            
+            downloadFile(csv, 'greenhouse-data.csv', 'text/csv');
+        }
+
+        function exportToJSON(data) {
+            const json = JSON.stringify(data, null, 2);
+            downloadFile(json, 'greenhouse-data.json', 'application/json');
+        }
+
+        function exportToPDF(data) {
+            // Simple PDF generation - in a real app, you'd use a library like jsPDF
+            alert('PDF export would be implemented with a PDF library like jsPDF');
+        }
+
+        function downloadFile(content, filename, mimeType) {
+            const blob = new Blob([content], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // Settings Page Functions
+        function loadSettings() {
+            // Load saved settings from localStorage
+            const settings = JSON.parse(localStorage.getItem('farmSettings') || '{}');
+            
+            // Populate form fields
+            if (settings.mqttBroker) document.getElementById('settingsMqttBroker').value = settings.mqttBroker;
+            if (settings.mqttUser) document.getElementById('settingsMqttUser').value = settings.mqttUser;
+            if (settings.mqttPass) document.getElementById('settingsMqttPass').value = settings.mqttPass;
+            
+            if (settings.tempMin) document.getElementById('tempMin').value = settings.tempMin;
+            if (settings.tempMax) document.getElementById('tempMax').value = settings.tempMax;
+            if (settings.humidityMin) document.getElementById('humidityMin').value = settings.humidityMin;
+            if (settings.humidityMax) document.getElementById('humidityMax').value = settings.humidityMax;
+            if (settings.phMin) document.getElementById('phMin').value = settings.phMin;
+            if (settings.phMax) document.getElementById('phMax').value = settings.phMax;
+            if (settings.soilHumidityMin) document.getElementById('soilHumidityMin').value = settings.soilHumidityMin;
+            if (settings.soilHumidityMax) document.getElementById('soilHumidityMax').value = settings.soilHumidityMax;
+            
+            if (settings.currentCrop) document.getElementById('currentCrop').value = settings.currentCrop;
+            if (settings.growthStage) document.getElementById('growthStage').value = settings.growthStage;
+            if (settings.plantingDate) document.getElementById('plantingDate').value = settings.plantingDate;
+            if (settings.harvestDate) document.getElementById('harvestDate').value = settings.harvestDate;
+            
+            if (settings.autoWatering) document.getElementById('autoWatering').value = settings.autoWatering;
+            if (settings.wateringThreshold) document.getElementById('wateringThreshold').value = settings.wateringThreshold;
+            if (settings.lightOn) document.getElementById('lightOn').value = settings.lightOn;
+            if (settings.lightOff) document.getElementById('lightOff').value = settings.lightOff;
+            if (settings.ventilationTemp) document.getElementById('ventilationTemp').value = settings.ventilationTemp;
+            
+            if (settings.greenhouseSize) document.getElementById('greenhouseSize').value = settings.greenhouseSize;
+            if (settings.farmLocation) document.getElementById('farmLocation').value = settings.farmLocation;
+            if (settings.equipmentInventory) document.getElementById('equipmentInventory').value = settings.equipmentInventory;
+            if (settings.farmNotes) document.getElementById('farmNotes').value = settings.farmNotes;
+        }
+
+        function testConnection() {
+            const broker = document.getElementById('settingsMqttBroker').value;
+            const username = document.getElementById('settingsMqttUser').value;
+            const password = document.getElementById('settingsMqttPass').value;
+            
+            // Test MQTT connection
+            alert(`Testing connection to ${broker}...`);
+            // In a real implementation, you'd test the MQTT connection here
+        }
+
+        function saveThresholds() {
+            const settings = {
+                tempMin: document.getElementById('tempMin').value,
+                tempMax: document.getElementById('tempMax').value,
+                humidityMin: document.getElementById('humidityMin').value,
+                humidityMax: document.getElementById('humidityMax').value,
+                phMin: document.getElementById('phMin').value,
+                phMax: document.getElementById('phMax').value,
+                soilHumidityMin: document.getElementById('soilHumidityMin').value,
+                soilHumidityMax: document.getElementById('soilHumidityMax').value
+            };
+            
+            localStorage.setItem('farmSettings', JSON.stringify(settings));
+            alert('Thresholds saved successfully!');
+        }
+
+        function saveCropInfo() {
+            const settings = JSON.parse(localStorage.getItem('farmSettings') || '{}');
+            
+            settings.currentCrop = document.getElementById('currentCrop').value;
+            settings.growthStage = document.getElementById('growthStage').value;
+            settings.plantingDate = document.getElementById('plantingDate').value;
+            settings.harvestDate = document.getElementById('harvestDate').value;
+            
+            localStorage.setItem('farmSettings', JSON.stringify(settings));
+            alert('Crop information saved successfully!');
+        }
+
+        function saveAutomation() {
+            const settings = JSON.parse(localStorage.getItem('farmSettings') || '{}');
+            
+            settings.autoWatering = document.getElementById('autoWatering').value;
+            settings.wateringThreshold = document.getElementById('wateringThreshold').value;
+            settings.lightOn = document.getElementById('lightOn').value;
+            settings.lightOff = document.getElementById('lightOff').value;
+            settings.ventilationTemp = document.getElementById('ventilationTemp').value;
+            
+            localStorage.setItem('farmSettings', JSON.stringify(settings));
+            alert('Automation settings saved successfully!');
+        }
+
+        function saveFarmInfo() {
+            const settings = JSON.parse(localStorage.getItem('farmSettings') || '{}');
+            
+            settings.greenhouseSize = document.getElementById('greenhouseSize').value;
+            settings.farmLocation = document.getElementById('farmLocation').value;
+            settings.equipmentInventory = document.getElementById('equipmentInventory').value;
+            settings.farmNotes = document.getElementById('farmNotes').value;
+            
+            localStorage.setItem('farmSettings', JSON.stringify(settings));
+            alert('Farm information saved successfully!');
+        }
+
+        // Data storage for charts (keep last 20 data points)
+        const maxDataPoints = 20;
+        const chartData = {
+            labels: [],
+            temperature: [],
+            humidity: [],
+            light: [],
+            ph: [],
+            soilHumidity: [],
+            soilTemperature: [],
+            nitrogen: [],
+            phosphorus: [],
+            potassium: []
+        };
+
+        // Actuator control system
+        let actuatorStates = {
+            fan: false
+        };
+
+        // Enhanced summary statistics tracking
+        const summaryStats = {
+            temperature: { min: null, max: null, values: [] },
+            humidity: { min: null, max: null, values: [] },
+            light: { min: null, max: null, values: [] },
+            ph: { min: null, max: null, values: [] },
+            soilHumidity: { min: null, max: null, values: [] },
+            soilTemperature: { min: null, max: null, values: [] },
+            nitrogen: { min: null, max: null, values: [] },
+            phosphorus: { min: null, max: null, values: [] },
+            potassium: { min: null, max: null, values: [] }
+        };
+
+        function updateSummaryStats(sensor, value) {
+            if (summaryStats[sensor]) {
+                summaryStats[sensor].values.push(value);
+                
+                // Keep only last 100 values for performance
+                if (summaryStats[sensor].values.length > 100) {
+                    summaryStats[sensor].values.shift();
+                }
+                
+                // Update min/max
+                if (summaryStats[sensor].min === null || value < summaryStats[sensor].min) {
+                    summaryStats[sensor].min = value;
+                }
+                if (summaryStats[sensor].max === null || value > summaryStats[sensor].max) {
+                    summaryStats[sensor].max = value;
+                }
+                
+                updateSummaryDisplay();
+            }
+        }
+
+        function updateSummaryDisplay() {
+            // Update ranges
+            updateRangeDisplay('tempRange', summaryStats.temperature.min, summaryStats.temperature.max, '°C');
+            updateRangeDisplay('humidityRange', summaryStats.humidity.min, summaryStats.humidity.max, '%');
+            updateRangeDisplay('lightRange', summaryStats.light.min, summaryStats.light.max, 'lux');
+            updateRangeDisplay('phRange', summaryStats.ph.min, summaryStats.ph.max, 'pH');
+            updateRangeDisplay('soilHumidityRange', summaryStats.soilHumidity.min, summaryStats.soilHumidity.max, '%');
+            updateRangeDisplay('soilTempRange', summaryStats.soilTemperature.min, summaryStats.soilTemperature.max, '°C');
+            
+            // Update nutrient status
+            const nutrientStatus = `N: ${summaryStats.nitrogen.max || '--'} P: ${summaryStats.phosphorus.max || '--'} K: ${summaryStats.potassium.max || '--'}`;
+            document.getElementById('nutrientStatus').textContent = nutrientStatus;
+            
+            // Update status indicators
+            updateSummaryStatus('tempSummaryStatus', summaryStats.temperature.max, 'temperature');
+            updateSummaryStatus('humiditySummaryStatus', summaryStats.humidity.max, 'humidity');
+            updateSummaryStatus('lightSummaryStatus', summaryStats.light.max, 'light');
+            updateSummaryStatus('phSummaryStatus', summaryStats.ph.max, 'ph');
+            updateSummaryStatus('soilHumiditySummaryStatus', summaryStats.soilHumidity.max, 'soilHumidity');
+            updateSummaryStatus('soilTempSummaryStatus', summaryStats.soilTemperature.max, 'soilTemperature');
+            updateSummaryStatus('nutrientSummaryStatus', summaryStats.nitrogen.max, 'npk');
+            
+            // Update overall health
+            updateOverallHealth();
+            
+            // Update current status and recommendations
+            updateCurrentStatus();
+        }
+
+        // Update range display
+        function updateRangeDisplay(elementId, min, max, unit) {
+            const element = document.getElementById(elementId);
+            if (min !== null && max !== null) {
+                element.textContent = `${min.toFixed(1)}${unit} to ${max.toFixed(1)}${unit}`;
+            } else if (min !== null) {
+                element.textContent = `${min.toFixed(1)}${unit} to --${unit}`;
+            } else if (max !== null) {
+                element.textContent = `--${unit} to ${max.toFixed(1)}${unit}`;
+            }
+        }
+
+        // Update summary status indicators
+        function updateSummaryStatus(elementId, value, sensorType) {
+            const element = document.getElementById(elementId);
+            if (value === null) {
+                element.textContent = 'No data';
+                element.className = 'summary-status';
+                return;
+            }
+            
+            let evaluation;
+            switch(sensorType) {
+                case 'temperature':
+                    evaluation = evaluateTemperature(value);
+                    break;
+                case 'humidity':
+                    evaluation = evaluateHumidity(value);
+                    break;
+                case 'light':
+                    evaluation = evaluateLight(value);
+                    break;
+                case 'ph':
+                    evaluation = evaluatePH(value);
+                    break;
+                case 'soilHumidity':
+                    evaluation = evaluateSoilHumidity(value);
+                    break;
+                case 'soilTemperature':
+                    evaluation = evaluateSoilTemperature(value);
+                    break;
+                case 'npk':
+                    evaluation = evaluateNPK(value, 'N');
+                    break;
+            }
+            
+            element.textContent = evaluation.text;
+            element.className = `summary-status ${evaluation.status}`;
+        }
+
+        // Update overall health assessment
+        function updateOverallHealth() {
+            const healthElement = document.getElementById('overallHealth');
+            const statusElement = document.getElementById('overallHealthStatus');
+            
+            let goodCount = 0;
+            let warningCount = 0;
+            let criticalCount = 0;
+            let totalCount = 0;
+            
+            // Count statuses for each sensor
+            const sensors = ['temperature', 'humidity', 'light', 'ph', 'soilHumidity', 'soilTemperature'];
+            sensors.forEach(sensor => {
+                const value = summaryStats[sensor].max;
+                if (value !== null) {
+                    totalCount++;
+                    let evaluation;
+                    switch(sensor) {
+                        case 'temperature':
+                            evaluation = evaluateTemperature(value);
+                            break;
+                        case 'humidity':
+                            evaluation = evaluateHumidity(value);
+                            break;
+                        case 'light':
+                            evaluation = evaluateLight(value);
+                            break;
+                        case 'ph':
+                            evaluation = evaluatePH(value);
+                            break;
+                        case 'soilHumidity':
+                            evaluation = evaluateSoilHumidity(value);
+                            break;
+                        case 'soilTemperature':
+                            evaluation = evaluateSoilTemperature(value);
+                            break;
+                    }
+                    
+                    if (evaluation.status === 'good') goodCount++;
+                    else if (evaluation.status === 'warning') warningCount++;
+                    else if (evaluation.status === 'danger') criticalCount++;
+                }
+            });
+            
+            if (totalCount === 0) {
+                healthElement.textContent = 'Awaiting Data';
+                statusElement.textContent = 'No data';
+                statusElement.className = 'summary-status';
+            } else {
+                const healthPercentage = (goodCount / totalCount) * 100;
+                healthElement.textContent = `${healthPercentage.toFixed(0)}% Optimal`;
+                
+                if (criticalCount > 0) {
+                    statusElement.textContent = 'Critical Issues';
+                    statusElement.className = 'summary-status critical';
+                } else if (warningCount > 0) {
+                    statusElement.textContent = 'Needs Attention';
+                    statusElement.className = 'summary-status warning';
+                } else {
+                    statusElement.textContent = 'All Good';
+                    statusElement.className = 'summary-status good';
+                }
+            }
+        }
+
+        // Update current status and recommendations
+        function updateCurrentStatus() {
+            const statusElement = document.getElementById('currentStatus');
+            const recommendationsElement = document.getElementById('currentRecommendations');
+            
+            let statusText = '';
+            let recommendations = [];
+            
+            // Check each sensor for current status
+            const sensors = [
+                { name: 'Air Temperature', value: summaryStats.temperature.max, type: 'temperature' },
+                { name: 'Air Humidity', value: summaryStats.humidity.max, type: 'humidity' },
+                { name: 'Light Intensity', value: summaryStats.light.max, type: 'light' },
+                { name: 'Soil pH', value: summaryStats.ph.max, type: 'ph' },
+                { name: 'Soil Moisture', value: summaryStats.soilHumidity.max, type: 'soilHumidity' },
+                { name: 'Soil Temperature', value: summaryStats.soilTemperature.max, type: 'soilTemperature' }
+            ];
+            
+            let criticalIssues = [];
+            let warnings = [];
+            
+            sensors.forEach(sensor => {
+                if (sensor.value !== null) {
+                    let evaluation;
+                    switch(sensor.type) {
+                        case 'temperature':
+                            evaluation = evaluateTemperature(sensor.value);
+                            break;
+                        case 'humidity':
+                            evaluation = evaluateHumidity(sensor.value);
+                            break;
+                        case 'light':
+                            evaluation = evaluateLight(sensor.value);
+                            break;
+                        case 'ph':
+                            evaluation = evaluatePH(sensor.value);
+                            break;
+                        case 'soilHumidity':
+                            evaluation = evaluateSoilHumidity(sensor.value);
+                            break;
+                        case 'soilTemperature':
+                            evaluation = evaluateSoilTemperature(sensor.value);
+                            break;
+                    }
+                    
+                    if (evaluation.status === 'danger') {
+                        criticalIssues.push(sensor.name);
+                    } else if (evaluation.status === 'warning') {
+                        warnings.push(sensor.name);
+                    }
+                }
+            });
+            
+            if (criticalIssues.length > 0) {
+                statusText = `⚠️ Critical issues detected in: ${criticalIssues.join(', ')}`;
+                recommendations.push('Immediate action required for critical parameters');
+            } else if (warnings.length > 0) {
+                statusText = `⚠️ Attention needed for: ${warnings.join(', ')}`;
+                recommendations.push('Monitor warning parameters closely');
+            } else {
+                statusText = '✅ All parameters within optimal ranges for Brassicaceae';
+                recommendations.push('Continue current management practices');
+            }
+            
+            // Add Brassicaceae-specific recommendations
+            if (summaryStats.temperature.max > 30) {
+                recommendations.push('Consider cooling systems for high temperatures');
+            }
+            if (summaryStats.humidity.max > 85) {
+                recommendations.push('Improve ventilation to reduce humidity');
+            }
+            if (summaryStats.ph.max < 6.0) {
+                recommendations.push('Consider adding lime to raise soil pH');
+            }
+            
+            statusElement.textContent = statusText;
+            recommendationsElement.textContent = recommendations.join(' • ');
+        }
+
+        // Initialize Charts
+        const tempHumidityChart = new Chart(document.getElementById('tempHumidityChart'), {
+            type: 'line',
+            data: {
+                labels: chartData.labels,
+                datasets: [{
+                    label: 'Temperature (°C)',
+                    data: chartData.temperature,
+                    borderColor: '#e74c3c',
+                    backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                    yAxisID: 'y',
+                    tension: 0.4
+                }, {
+                    label: 'Humidity (%)',
+                    data: chartData.humidity,
+                    borderColor: '#3498db',
+                    backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                    yAxisID: 'y1',
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                },
+                scales: {
+                    y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        ticks: { color: '#a0a0a0' },
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                    },
+                    y1: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        ticks: { color: '#a0a0a0' },
+                        grid: { drawOnChartArea: false }
+                    },
+                    x: {
+                        ticks: { color: '#a0a0a0' },
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        labels: { color: '#ffffff' }
+                    }
+                }
+            }
+        });
+
+        const lightChart = new Chart(document.getElementById('lightChart'), {
+            type: 'line',
+            data: {
+                labels: chartData.labels,
+                datasets: [{
+                    label: 'Light Intensity (lux)',
+                    data: chartData.light,
+                    borderColor: '#f39c12',
+                    backgroundColor: 'rgba(243, 156, 18, 0.1)',
+                    tension: 0.4,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                scales: {
+                    y: {
+                        ticks: { color: '#a0a0a0' },
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                    },
+                    x: {
+                        ticks: { color: '#a0a0a0' },
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        labels: { color: '#ffffff' }
+                    }
+                }
+            }
+        });
+
+        const phChart = new Chart(document.getElementById('phChart'), {
+            type: 'line',
+            data: {
+                labels: chartData.labels,
+                datasets: [{
+                    label: 'Soil pH',
+                    data: chartData.ph,
+                    borderColor: '#9b59b6',
+                    backgroundColor: 'rgba(155, 89, 182, 0.1)',
+                    tension: 0.4,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                scales: {
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'pH Level',
+                            color: '#9b59b6'
+                        },
+                        ticks: { color: '#a0a0a0' },
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                    },
+                    x: {
+                        ticks: { color: '#a0a0a0' },
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        labels: { color: '#ffffff' }
+                    }
+                }
+            }
+        });
+
+        const soilTempChart = new Chart(document.getElementById('soilTempChart'), {
+            type: 'line',
+            data: {
+                labels: chartData.labels,
+                datasets: [{
+                    label: 'Soil Temperature (°C)',
+                    data: chartData.soilTemperature,
+                    borderColor: '#e67e22',
+                    backgroundColor: 'rgba(230, 126, 34, 0.1)',
+                    tension: 0.4,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                scales: {
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Temperature (°C)',
+                            color: '#e67e22'
+                        },
+                        ticks: { color: '#a0a0a0' },
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                    },
+                    x: {
+                        ticks: { color: '#a0a0a0' },
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        labels: { color: '#ffffff' }
+                    }
+                }
+            }
+        });
+
+        const soilHumidityChart = new Chart(document.getElementById('soilHumidityChart'), {
+            type: 'line',
+            data: {
+                labels: chartData.labels,
+                datasets: [{
+                    label: 'Soil Humidity (%)',
+                    data: chartData.soilHumidity,
+                    borderColor: '#2ecc71',
+                    backgroundColor: 'rgba(46, 204, 113, 0.1)',
+                    tension: 0.4,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                scales: {
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Humidity (%)',
+                            color: '#2ecc71'
+                        },
+                        ticks: { color: '#a0a0a0' },
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                    },
+                    x: {
+                        ticks: { color: '#a0a0a0' },
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        labels: { color: '#ffffff' }
+                    }
+                }
+            }
+        });
+
+        const npkChart = new Chart(document.getElementById('npkChart'), {
+            type: 'bar',
+            data: {
+                labels: chartData.labels,
+                datasets: [{
+                    label: 'Nitrogen (mg/kg)',
+                    data: chartData.nitrogen,
+                    backgroundColor: 'rgba(46, 204, 113, 0.6)',
+                    borderColor: '#2ecc71',
+                    borderWidth: 1
+                }, {
+                    label: 'Phosphorus (mg/kg)',
+                    data: chartData.phosphorus,
+                    backgroundColor: 'rgba(52, 152, 219, 0.6)',
+                    borderColor: '#3498db',
+                    borderWidth: 1
+                }, {
+                    label: 'Potassium (mg/kg)',
+                    data: chartData.potassium,
+                    backgroundColor: 'rgba(155, 89, 182, 0.6)',
+                    borderColor: '#9b59b6',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                scales: {
+                    y: {
+                        ticks: { color: '#a0a0a0' },
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                    },
+                    x: {
+                        ticks: { color: '#a0a0a0' },
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        labels: { color: '#ffffff' }
+                    }
+                }
+            }
+        });
+
+        // Update chart data
+        function updateChartData() {
+            // Keep only last maxDataPoints
+            if (chartData.labels.length > maxDataPoints) {
+                chartData.labels.shift();
+                chartData.temperature.shift();
+                chartData.humidity.shift();
+                chartData.light.shift();
+                chartData.ph.shift();
+                chartData.soilHumidity.shift();
+                chartData.soilTemperature.shift();
+                chartData.nitrogen.shift();
+                chartData.phosphorus.shift();
+                chartData.potassium.shift();
+            }
+
+            // Update all charts
+            tempHumidityChart.update('none');
+            lightChart.update('none');
+            phChart.update('none');
+            soilTempChart.update('none');
+            soilHumidityChart.update('none');
+            npkChart.update('none');
+        }
+
+        // Add timestamp to chart
+        function addTimestamp() {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString();
+            chartData.labels.push(timeStr);
+        }
+
+        // Brassicaceae-specific thresholds for Lucban, Quezon Province
+        const brassicaceaeThresholds = {
+            temperature: { optimal: { min: 18, max: 25 }, warning: { min: 15, max: 30 }, critical: { min: 10, max: 35 } },
+            humidity: { optimal: { min: 60, max: 80 }, warning: { min: 50, max: 85 }, critical: { min: 40, max: 90 } },
+            ph: { optimal: { min: 6.0, max: 7.0 }, warning: { min: 5.5, max: 7.5 }, critical: { min: 5.0, max: 8.0 } },
+            soilHumidity: { optimal: { min: 60, max: 80 }, warning: { min: 50, max: 85 }, critical: { min: 40, max: 90 } },
+            soilTemperature: { optimal: { min: 20, max: 28 }, warning: { min: 18, max: 30 }, critical: { min: 15, max: 35 } },
+            light: { optimal: { min: 15000, max: 25000 }, warning: { min: 10000, max: 35000 }, critical: { min: 5000, max: 50000 } }
+        };
+
+        // Status evaluation functions for Brassicaceae
+        function evaluateTemperature(value) {
+            const t = brassicaceaeThresholds.temperature;
+            if (value < t.critical.min || value > t.critical.max) return { status: 'danger', text: 'Critical' };
+            if (value < t.warning.min || value > t.warning.max) return { status: 'warning', text: 'Warning' };
+            return { status: 'good', text: 'Good' };
+        }
+
+        function evaluateHumidity(value) {
+            const t = brassicaceaeThresholds.humidity;
+            if (value < t.critical.min || value > t.critical.max) return { status: 'danger', text: 'Critical' };
+            if (value < t.warning.min || value > t.warning.max) return { status: 'warning', text: 'Warning' };
+            return { status: 'good', text: 'Good' };
+        }
+
+        function evaluateLight(value) {
+            const t = brassicaceaeThresholds.light;
+            if (value < t.critical.min || value > t.critical.max) return { status: 'danger', text: 'Critical' };
+            if (value < t.warning.min || value > t.warning.max) return { status: 'warning', text: 'Warning' };
+            return { status: 'good', text: 'Good' };
+        }
+
+        function evaluatePH(value) {
+            const t = brassicaceaeThresholds.ph;
+            if (value < t.critical.min || value > t.critical.max) return { status: 'danger', text: 'Critical' };
+            if (value < t.warning.min || value > t.warning.max) return { status: 'warning', text: 'Warning' };
+            return { status: 'good', text: 'Good' };
+        }
+
+        function evaluateSoilHumidity(value) {
+            const t = brassicaceaeThresholds.soilHumidity;
+            if (value < t.critical.min || value > t.critical.max) return { status: 'danger', text: 'Critical' };
+            if (value < t.warning.min || value > t.warning.max) return { status: 'warning', text: 'Warning' };
+            return { status: 'good', text: 'Good' };
+        }
+
+        function evaluateSoilTemperature(value) {
+            const t = brassicaceaeThresholds.soilTemperature;
+            if (value < t.critical.min || value > t.critical.max) return { status: 'danger', text: 'Critical' };
+            if (value < t.warning.min || value > t.warning.max) return { status: 'warning', text: 'Warning' };
+            return { status: 'good', text: 'Good' };
+        }
+
+        function evaluateNPK(value, nutrient) {
+            const thresholds = { N: 100, P: 50, K: 150 };
+            if (value < 30) return { status: 'danger', text: 'Critical' };
+            if (value < thresholds[nutrient]) return { status: 'warning', text: 'Low' };
+            return { status: 'good', text: 'Good' };
+        }
+
+        function updateStatus(elementId, evaluation) {
+            const element = document.getElementById(elementId);
+            element.textContent = evaluation.text;
+            element.className = `status-indicator status-${evaluation.status}`;
+        }
+
+        function updateRecommendation(elementId, sensor, value) {
+            const element = document.getElementById(elementId);
+            let recommendation = '';
+            
+            switch(sensor) {
+                case 'temperature':
+                    if (value < 15) recommendation = '💡 Consider heating or insulation for Brassicaceae';
+                    else if (value > 30) recommendation = '💡 Increase ventilation or cooling - Brassicaceae prefer cooler temps';
+                    break;
+                case 'humidity':
+                    if (value < 50) recommendation = '💡 Add humidifier - Brassicaceae need higher humidity';
+                    else if (value > 85) recommendation = '💡 Improve ventilation or dehumidify to prevent disease';
+                    break;
+                case 'light':
+                    if (value < 10000) recommendation = '💡 Increase artificial lighting for Brassicaceae growth';
+                    else if (value > 35000) recommendation = '💡 Add shade - Brassicaceae prefer moderate light';
+                    break;
+                case 'ph':
+                    if (value < 6.0) recommendation = '💡 Add lime to increase pH for Brassicaceae';
+                    else if (value > 7.0) recommendation = '💡 Add sulfur to decrease pH - Brassicaceae prefer slightly acidic';
+                    break;
+                case 'soilHumidity':
+                    if (value < 50) recommendation = '💡 Water immediately - Brassicaceae need consistent moisture';
+                    else if (value > 85) recommendation = '💡 Improve drainage - prevent root rot in Brassicaceae';
+                    break;
+                case 'soilTemperature':
+                    if (value < 18) recommendation = '💡 Add heating or insulation for Brassicaceae roots';
+                    else if (value > 30) recommendation = '💡 Cool soil with mulch or irrigation';
+                    break;
+            }
+            
+            if (recommendation) {
+                element.textContent = recommendation;
+                element.style.display = 'block';
+            } else {
+                element.style.display = 'none';
+            }
+        }
+
+        // Handle incoming MQTT messages
+        function handleMessage(topic, message) {
+            const value = parseFloat(message);
+            const now = new Date().toLocaleTimeString();
+
+            switch(topic) {
+                case 'greenhouse/temperature':
+                    document.getElementById('tempValue').textContent = value.toFixed(1);
+                    document.getElementById('tempTime').textContent = 'Updated: ' + now;
+                    
+                    // Update status and recommendations
+                    updateStatus('tempStatus', evaluateTemperature(value));
+                    updateRecommendation('tempRecommendation', 'temperature', value);
+                    
+                    // Update summary statistics
+                    updateSummaryStats('temperature', value);
+                    
+                    // Add to chart only if it's a new timestamp
+                    if (chartData.labels.length === 0 || chartData.labels[chartData.labels.length - 1] !== now) {
+                        addTimestamp();
+                    }
+                    chartData.temperature.push(value);
+                    break;
+
+                case 'greenhouse/humidity':
+                    document.getElementById('humidityValue').textContent = value.toFixed(1);
+                    document.getElementById('humidityTime').textContent = 'Updated: ' + now;
+                    
+                    // Update status and recommendations
+                    updateStatus('humidityStatus', evaluateHumidity(value));
+                    updateRecommendation('humidityRecommendation', 'humidity', value);
+                    
+                    // Update summary statistics
+                    updateSummaryStats('humidity', value);
+                    
+                    chartData.humidity.push(value);
+                    break;
+
+                case 'greenhouse/light':
+                    document.getElementById('lightValue').textContent = value.toFixed(1);
+                    document.getElementById('lightTime').textContent = 'Updated: ' + now;
+                    
+                    // Update status and recommendations
+                    updateStatus('lightStatus', evaluateLight(value));
+                    updateRecommendation('lightRecommendation', 'light', value);
+                    
+                    // Update summary statistics
+                    updateSummaryStats('light', value);
+                    
+                    chartData.light.push(value);
+                    break;
+
+                case 'greenhouse/ph':
+                    document.getElementById('phValue').textContent = value.toFixed(1);
+                    document.getElementById('phTime').textContent = 'Updated: ' + now;
+                    
+                    // Update status and recommendations
+                    updateStatus('phStatus', evaluatePH(value));
+                    updateRecommendation('phRecommendation', 'ph', value);
+                    
+                    // Update summary statistics
+                    updateSummaryStats('ph', value);
+                    
+                    chartData.ph.push(value);
+                    break;
+
+                case 'greenhouse/soil_humidity':
+                    document.getElementById('soilHumidityValue').textContent = value.toFixed(1);
+                    document.getElementById('soilHumidityTime').textContent = 'Updated: ' + now;
+                    
+                    // Update status and recommendations
+                    updateStatus('soilHumidityStatus', evaluateSoilHumidity(value));
+                    updateRecommendation('soilHumidityRecommendation', 'soilHumidity', value);
+                    
+                    chartData.soilHumidity.push(value);
+                    break;
+
+                case 'greenhouse/soil_temperature':
+                    document.getElementById('soilTempValue').textContent = value.toFixed(1);
+                    document.getElementById('soilTempTime').textContent = 'Updated: ' + now;
+                    
+                    // Update status and recommendations
+                    updateStatus('soilTempStatus', evaluateSoilTemperature(value));
+                    updateRecommendation('soilTempRecommendation', 'soilTemperature', value);
+                    
+                    chartData.soilTemperature.push(value);
+                    break;
+
+                case 'greenhouse/nitrogen':
+                    document.getElementById('nitrogenValue').textContent = Math.round(value);
+                    document.getElementById('npkTime').textContent = 'Updated: ' + now;
+                    
+                    // Update status
+                    updateStatus('nitrogenStatus', evaluateNPK(value, 'N'));
+                    
+                    chartData.nitrogen.push(value);
+                    break;
+
+                case 'greenhouse/phosphorus':
+                    document.getElementById('phosphorusValue').textContent = Math.round(value);
+                    
+                    // Update status
+                    updateStatus('phosphorusStatus', evaluateNPK(value, 'P'));
+                    
+                    chartData.phosphorus.push(value);
+                    break;
+
+                case 'greenhouse/potassium':
+                    document.getElementById('potassiumValue').textContent = Math.round(value);
+                    
+                    // Update status
+                    updateStatus('potassiumStatus', evaluateNPK(value, 'K'));
+                    
+                    chartData.potassium.push(value);
+                    break;
+
+                case 'greenhouse/actuators/fan_status':
+                    console.log(`🎛️ Fan status update: ${message}`);
+                    updateActuatorStatusFromMQTT('fan', message);
+                    break;
+
+                default:
+                    console.log(`❓ Unknown topic received: ${topic}`);
+                    console.log(`   Message: ${message}`);
+            }
+
+            updateChartData();
+        }
+
+        // Scroll to specific chart
+        function scrollToChart(chartId) {
+            const chartElement = document.getElementById(chartId);
+            if (chartElement) {
+                chartElement.scrollIntoView({ 
+                    behavior: 'smooth', 
+                    block: 'start' 
+                });
+                
+                // Add a subtle highlight effect
+                chartElement.style.border = '2px solid var(--primary-color)';
+                chartElement.style.borderRadius = '15px';
+                
+                // Remove highlight after 2 seconds
+                setTimeout(() => {
+                    chartElement.style.border = 'none';
+                }, 2000);
+            }
+        }
+
+        // Update connection status
+        function updateConnectionStatus(connected) {
+            const navStatusDot = document.getElementById('navStatusDot');
+            const navStatusText = document.getElementById('navStatusText');
+            const statusElement = document.getElementById('statusText');
+            const connectionDiv = document.getElementById('connectionStatus');
+            
+            if (connected) {
+                navStatusDot.classList.add('connected');
+                navStatusText.textContent = 'Connected';
+            } else {
+                navStatusDot.classList.remove('connected');
+                navStatusText.textContent = 'Disconnected';
+            }
+            
+            // Update settings panel status
+            if (statusElement) {
+                statusElement.textContent = connected ? '✅ MQTT Connected' : '❌ MQTT Disconnected';
+                statusElement.style.color = connected ? '#4CAF50' : '#f44336';
+            }
+            
+            if (connectionDiv) {
+                connectionDiv.style.backgroundColor = connected ? 'rgba(76, 175, 80, 0.1)' : 'rgba(244, 67, 54, 0.1)';
+                connectionDiv.style.border = connected ? '1px solid #4CAF50' : '1px solid #f44336';
+            }
+        }
+
+        // Function to check MQTT connection status
+        function checkMQTTStatus() {
+            const isConnected = window.mqttClient && window.mqttClient.connected;
+            updateConnectionStatus(isConnected);
+            
+            console.log('🔍 MQTT Status Check:');
+            console.log('- Client exists:', !!window.mqttClient);
+            console.log('- Client connected:', isConnected);
+            console.log('- Client state:', window.mqttClient ? window.mqttClient.connectionState : 'No client');
+            
+            return isConnected;
+        }
+
+        // Reconnect to MQTT
+        function reconnectMQTT() {
+            if (mqttClient) {
+                mqttClient.end();
+            }
+            connectMQTT();
+        }
+
+        // Show alert message
+        function showAlert(message, type = 'info') {
+            const alertsDiv = document.getElementById('alerts');
+            const alert = document.createElement('div');
+            alert.className = `alert alert-${type}`;
+            alert.innerHTML = `
+                <span>${type === 'warning' ? '⚠️' : 'ℹ️'}</span>
+                <span>${message}</span>
+            `;
+            alertsDiv.appendChild(alert);
+
+            // Remove alert after 5 seconds
+            setTimeout(() => {
+                alert.style.animation = 'slideOut 0.5s ease';
+                setTimeout(() => alert.remove(), 500);
+            }, 5000);
+        }
+
+        // Scroll to top function
+        function scrollToTop() {
+            window.scrollTo({
+                top: 0,
+                behavior: 'smooth'
+            });
+        }
+
+        // Show/hide scroll to top button based on scroll position
+        function toggleScrollToTop() {
+            const scrollButton = document.getElementById('scrollToTop');
+            if (window.scrollY > 300) {
+                scrollButton.classList.add('visible');
+            } else {
+                scrollButton.classList.remove('visible');
+            }
+        }
+
+        // Load saved settings and connect on page load
+        window.addEventListener('load', () => {
+            // Clear old localStorage values if they don't have /mqtt path or use insecure protocol on HTTPS
+            const savedBroker = localStorage.getItem('mqttBroker');
+            if (savedBroker && (!savedBroker.includes('/mqtt') || 
+                (window.location.protocol === 'https:' && savedBroker.startsWith('ws://')))) {
+                console.log('🧹 Clearing old MQTT settings - updating to secure protocol');
+                localStorage.removeItem('mqttBroker');
+                localStorage.removeItem('mqttUser');
+                localStorage.removeItem('mqttPass');
+            }
+
+            const currentBroker = savedBroker && savedBroker.includes('/mqtt') 
+                ? savedBroker 
+                : document.getElementById('mqttBroker').value;
+            const savedUser = localStorage.getItem('mqttUser');
+            const savedPass = localStorage.getItem('mqttPass');
+
+            // Set values from localStorage if they exist and are valid
+            if (currentBroker && currentBroker.includes('/mqtt')) {
+                document.getElementById('mqttBroker').value = currentBroker;
+            }
+            if (savedUser) document.getElementById('mqttUser').value = savedUser;
+            if (savedPass) document.getElementById('mqttPass').value = savedPass;
+
+            console.log('📋 Loading MQTT settings...');
+            console.log('   Broker:', document.getElementById('mqttBroker').value);
+            console.log('   User:', document.getElementById('mqttUser').value || 'Not set');
+            console.log('   Pass:', document.getElementById('mqttPass').value ? '***' : 'Not set');
+
+            // Auto-connect after a short delay to ensure DOM is ready
+            setTimeout(() => {
+                console.log('⏰ Auto-connecting to MQTT...');
+                
+                // If page is served over HTTPS and broker is using ws://, suggest wss://
+                if (window.location.protocol === 'https:' && savedBroker && savedBroker.startsWith('ws://')) {
+                    console.warn('⚠️ HTTPS page with insecure WebSocket - this may fail');
+                    showAlert('⚠️ HTTPS page detected. Consider using wss:// broker URL for secure connection', 'warning');
+                }
+                
+                connectMQTT();
+            }, 500);
+            
+            // Set up periodic connection monitoring
+            setInterval(() => {
+                if (mqttClient && !mqttClient.connected) {
+                    console.log('🔄 Periodic check: MQTT disconnected, attempting reconnection...');
+                    reconnectMQTT();
+                }
+            }, 30000); // Check every 30 seconds
+        });
+
+        // Show info modal with sensor-specific information
+        function showInfoModal(sensorType) {
+            const modal = document.getElementById('infoModal');
+            const title = document.getElementById('infoModalTitle');
+            const body = document.getElementById('infoModalBody');
+            
+            const sensorInfo = getSensorInfo(sensorType);
+            title.textContent = sensorInfo.title;
+            body.innerHTML = sensorInfo.content;
+            
+            modal.classList.add('visible');
+        }
+
+        // Hide info modal
+        function hideInfoModal() {
+            const modal = document.getElementById('infoModal');
+            modal.classList.remove('visible');
+        }
+
+        // Get sensor-specific information
+        function getSensorInfo(sensorType) {
+            const info = {
+                temperature: {
+                    title: '🌡️ Air Temperature Sensor',
+                    content: `
+                        <p>The air temperature sensor monitors the ambient temperature inside your greenhouse, which is crucial for Brassicaceae cultivation.</p>
+                        
+                        <h4>Why It Matters for Brassicaceae:</h4>
+                        <ul>
+                            <li><strong>Optimal Growth:</strong> Brassicaceae (cabbage family) thrive in cooler temperatures</li>
+                            <li><strong>Bolting Prevention:</strong> High temperatures can cause premature flowering</li>
+                            <li><strong>Quality Control:</strong> Proper temperature ensures better leaf development</li>
+                        </ul>
+                        
+                        <h4>Optimal Ranges for Brassicaceae:</h4>
+                        <ul>
+                            <li><strong>Good:</strong> 18-25°C (64-77°F)</li>
+                            <li><strong>Warning:</strong> 15-30°C (59-86°F)</li>
+                            <li><strong>Critical:</strong> Below 10°C or above 35°C</li>
+                        </ul>
+                        
+                        <h4>Management Tips:</h4>
+                        <ul>
+                            <li>Use ventilation systems during hot periods</li>
+                            <li>Consider shade cloths in tropical climates</li>
+                            <li>Monitor for temperature fluctuations</li>
+                        </ul>
+                    `
+                },
+                humidity: {
+                    title: '💧 Air Humidity Sensor',
+                    content: `
+                        <p>The air humidity sensor measures the moisture content in the air, which affects plant transpiration and disease susceptibility.</p>
+                        
+                        <h4>Why It Matters for Brassicaceae:</h4>
+                        <ul>
+                            <li><strong>Disease Prevention:</strong> High humidity can lead to fungal diseases</li>
+                            <li><strong>Water Management:</strong> Affects plant water uptake and transpiration</li>
+                            <li><strong>Leaf Health:</strong> Proper humidity prevents leaf edge burn</li>
+                        </ul>
+                        
+                        <h4>Optimal Ranges for Brassicaceae:</h4>
+                        <ul>
+                            <li><strong>Good:</strong> 60-80% relative humidity</li>
+                            <li><strong>Warning:</strong> 50-85% relative humidity</li>
+                            <li><strong>Critical:</strong> Below 40% or above 90%</li>
+                        </ul>
+                        
+                        <h4>Management Tips:</h4>
+                        <ul>
+                            <li>Use dehumidifiers during high humidity periods</li>
+                            <li>Ensure proper air circulation</li>
+                            <li>Avoid overhead watering in humid conditions</li>
+                        </ul>
+                    `
+                },
+                light: {
+                    title: '🔆 Light Intensity Sensor',
+                    content: `
+                        <p>The light sensor measures the intensity of light reaching your plants, which is essential for photosynthesis and growth.</p>
+                        
+                        <h4>Why It Matters for Brassicaceae:</h4>
+                        <ul>
+                            <li><strong>Photosynthesis:</strong> Light drives energy production for growth</li>
+                            <li><strong>Leaf Development:</strong> Proper light ensures healthy leaf formation</li>
+                            <li><strong>Nutrient Production:</strong> Light affects vitamin and nutrient content</li>
+                        </ul>
+                        
+                        <h4>Optimal Ranges for Brassicaceae:</h4>
+                        <ul>
+                            <li><strong>Good:</strong> 15,000-25,000 lux</li>
+                            <li><strong>Warning:</strong> 10,000-35,000 lux</li>
+                            <li><strong>Critical:</strong> Below 5,000 or above 50,000 lux</li>
+                        </ul>
+                        
+                        <h4>Management Tips:</h4>
+                        <ul>
+                            <li>Use shade cloths during intense tropical sun</li>
+                            <li>Supplement with LED grow lights if needed</li>
+                            <li>Monitor light duration (12-16 hours optimal)</li>
+                        </ul>
+                    `
+                },
+                soilTemperature: {
+                    title: '🌡️ Soil Temperature Sensor',
+                    content: `
+                        <p>The soil temperature sensor monitors the temperature of the root zone, which affects nutrient uptake and root development.</p>
+                        
+                        <h4>Why It Matters for Brassicaceae:</h4>
+                        <ul>
+                            <li><strong>Root Growth:</strong> Optimal soil temperature promotes healthy root development</li>
+                            <li><strong>Nutrient Uptake:</strong> Temperature affects nutrient absorption efficiency</li>
+                            <li><strong>Microbial Activity:</strong> Soil temperature influences beneficial soil organisms</li>
+                        </ul>
+                        
+                        <h4>Optimal Ranges for Brassicaceae:</h4>
+                        <ul>
+                            <li><strong>Good:</strong> 20-28°C (68-82°F)</li>
+                            <li><strong>Warning:</strong> 18-30°C (64-86°F)</li>
+                            <li><strong>Critical:</strong> Below 15°C or above 35°C</li>
+                        </ul>
+                        
+                        <h4>Management Tips:</h4>
+                        <ul>
+                            <li>Use mulch to regulate soil temperature</li>
+                            <li>Consider raised beds for better temperature control</li>
+                            <li>Monitor temperature fluctuations throughout the day</li>
+                        </ul>
+                    `
+                },
+                soilHumidity: {
+                    title: '🌱 Soil Humidity Sensor',
+                    content: `
+                        <p>The soil humidity sensor measures the moisture content in the soil, which is critical for plant water uptake and root health.</p>
+                        
+                        <h4>Why It Matters for Brassicaceae:</h4>
+                        <ul>
+                            <li><strong>Water Uptake:</strong> Proper soil moisture ensures adequate water supply</li>
+                            <li><strong>Root Health:</strong> Prevents both drought stress and root rot</li>
+                            <li><strong>Nutrient Transport:</strong> Water carries nutrients to plant roots</li>
+                        </ul>
+                        
+                        <h4>Optimal Ranges for Brassicaceae:</h4>
+                        <ul>
+                            <li><strong>Good:</strong> 60-80% field capacity</li>
+                            <li><strong>Warning:</strong> 50-85% field capacity</li>
+                            <li><strong>Critical:</strong> Below 40% or above 90%</li>
+                        </ul>
+                        
+                        <h4>Management Tips:</h4>
+                        <ul>
+                            <li>Implement drip irrigation for consistent moisture</li>
+                            <li>Use well-draining soil to prevent waterlogging</li>
+                            <li>Monitor soil moisture before watering</li>
+                        </ul>
+                    `
+                },
+                ph: {
+                    title: '🧪 Soil pH Sensor',
+                    content: `
+                        <p>The soil pH sensor measures the acidity or alkalinity of your soil, which affects nutrient availability and plant health.</p>
+                        
+                        <h4>Why It Matters for Brassicaceae:</h4>
+                        <ul>
+                            <li><strong>Nutrient Availability:</strong> pH affects how well plants can absorb nutrients</li>
+                            <li><strong>Root Health:</strong> Extreme pH can damage root systems</li>
+                            <li><strong>Disease Resistance:</strong> Proper pH helps prevent soil-borne diseases</li>
+                        </ul>
+                        
+                        <h4>Optimal Ranges for Brassicaceae:</h4>
+                        <ul>
+                            <li><strong>Good:</strong> 6.0-7.0 (slightly acidic to neutral)</li>
+                            <li><strong>Warning:</strong> 5.5-7.5</li>
+                            <li><strong>Critical:</strong> Below 5.0 or above 8.0</li>
+                        </ul>
+                        
+                        <h4>Management Tips:</h4>
+                        <ul>
+                            <li>Add lime to raise pH if too acidic</li>
+                            <li>Add sulfur to lower pH if too alkaline</li>
+                            <li>Test soil pH regularly, especially in tropical climates</li>
+                        </ul>
+                    `
+                },
+                npk: {
+                    title: '🌿 Soil Nutrients (NPK) Sensor',
+                    content: `
+                        <p>The NPK sensor measures the levels of essential macronutrients: Nitrogen (N), Phosphorus (P), and Potassium (K) in your soil.</p>
+                        
+                        <h4>Why Each Nutrient Matters for Brassicaceae:</h4>
+                        
+                        <h4>Nitrogen (N):</h4>
+                        <ul>
+                            <li><strong>Leaf Growth:</strong> Essential for healthy leaf development</li>
+                            <li><strong>Chlorophyll Production:</strong> Needed for photosynthesis</li>
+                            <li><strong>Optimal Range:</strong> Above 100 mg/kg</li>
+                        </ul>
+                        
+                        <h4>Phosphorus (P):</h4>
+                        <ul>
+                            <li><strong>Root Development:</strong> Promotes strong root systems</li>
+                            <li><strong>Energy Transfer:</strong> Essential for energy storage and transfer</li>
+                            <li><strong>Optimal Range:</strong> Above 50 mg/kg</li>
+                        </ul>
+                        
+                        <h4>Potassium (K):</h4>
+                        <ul>
+                            <li><strong>Disease Resistance:</strong> Improves plant immunity</li>
+                            <li><strong>Water Regulation:</strong> Helps with water uptake and retention</li>
+                            <li><strong>Optimal Range:</strong> Above 150 mg/kg</li>
+                        </ul>
+                        
+                        <h4>Management Tips:</h4>
+                        <ul>
+                            <li>Use balanced fertilizers for Brassicaceae</li>
+                            <li>Monitor nutrient levels throughout growing season</li>
+                            <li>Consider organic amendments for long-term soil health</li>
+                        </ul>
+                    `
+                }
+            };
+            
+            return info[sensorType] || {
+                title: 'Sensor Information',
+                content: '<p>Information not available for this sensor.</p>'
+            };
+        }
+
+        // Add scroll event listener for scroll-to-top button
+        window.addEventListener('scroll', toggleScrollToTop);
+    </script>
+
+    <!-- Scroll to Top Button -->
+    <button class="scroll-to-top" id="scrollToTop" onclick="scrollToTop()">
+        ↑
+    </button>
+
+    <!-- Info Modal -->
+    <div class="info-modal" id="infoModal">
+        <div class="info-modal-content">
+            <div class="info-modal-header">
+                <h3 class="info-modal-title" id="infoModalTitle">Sensor Information</h3>
+                <button class="info-modal-close" onclick="hideInfoModal()">×</button>
+            </div>
+            <div class="info-modal-body" id="infoModalBody">
+                <!-- Content will be populated by JavaScript -->
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+

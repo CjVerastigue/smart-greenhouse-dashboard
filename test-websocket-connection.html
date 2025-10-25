@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MQTT WebSocket Connection Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info { background-color: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>MQTT WebSocket Connection Test</h1>
+    
+    <div id="protocol-info" class="test-result info">
+        <strong>Page Protocol:</strong> <span id="protocol"></span><br>
+        <strong>Page URL:</strong> <span id="url"></span>
+    </div>
+    
+    <div id="test-results"></div>
+    
+    <button onclick="testSecureConnection()">Test Secure WebSocket (wss://)</button>
+    <button onclick="testInsecureConnection()">Test Insecure WebSocket (ws://)</button>
+    <button onclick="clearResults()">Clear Results</button>
+
+    <script src="https://unpkg.com/mqtt@5.3.0/dist/mqtt.min.js"></script>
+    <script>
+        // Display page info
+        document.getElementById('protocol').textContent = window.location.protocol;
+        document.getElementById('url').textContent = window.location.href;
+        
+        function addResult(message, type = 'info') {
+            const resultsDiv = document.getElementById('test-results');
+            const resultDiv = document.createElement('div');
+            resultDiv.className = `test-result ${type}`;
+            resultDiv.innerHTML = `<strong>${new Date().toLocaleTimeString()}:</strong> ${message}`;
+            resultsDiv.appendChild(resultDiv);
+        }
+        
+        function testSecureConnection() {
+            addResult('Testing secure WebSocket connection (wss://broker.emqx.io:8084/mqtt)...', 'info');
+            
+            const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
+                clean: true,
+                connectTimeout: 4000,
+                clientId: 'test_client_' + Math.random().toString(16).substr(2, 8)
+            });
+            
+            client.on('connect', () => {
+                addResult('✅ Secure WebSocket connection successful!', 'success');
+                client.end();
+            });
+            
+            client.on('error', (error) => {
+                addResult(`❌ Secure WebSocket connection failed: ${error.message}`, 'error');
+            });
+        }
+        
+        function testInsecureConnection() {
+            addResult('Testing insecure WebSocket connection (ws://broker.emqx.io:8083/mqtt)...', 'info');
+            
+            const client = mqtt.connect('ws://broker.emqx.io:8083/mqtt', {
+                clean: true,
+                connectTimeout: 4000,
+                clientId: 'test_client_' + Math.random().toString(16).substr(2, 8)
+            });
+            
+            client.on('connect', () => {
+                addResult('✅ Insecure WebSocket connection successful!', 'success');
+                client.end();
+            });
+            
+            client.on('error', (error) => {
+                if (window.location.protocol === 'https:' && error.message.includes('WebSocket')) {
+                    addResult('❌ Insecure WebSocket blocked by browser (expected on HTTPS)', 'error');
+                } else {
+                    addResult(`❌ Insecure WebSocket connection failed: ${error.message}`, 'error');
+                }
+            });
+        }
+        
+        function clearResults() {
+            document.getElementById('test-results').innerHTML = '';
+        }
+        
+        // Auto-test on page load
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                if (window.location.protocol === 'https:') {
+                    addResult('🔒 HTTPS page detected - testing secure connection automatically...', 'info');
+                    testSecureConnection();
+                } else {
+                    addResult('🔓 HTTP page detected - both secure and insecure connections should work', 'info');
+                }
+            }, 1000);
+        });
+    </script>
+</body>
+</html>
